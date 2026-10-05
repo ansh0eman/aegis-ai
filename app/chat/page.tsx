@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 type Message = {
+  id?: number;
   role: "user" | "assistant";
   content: string;
 };
@@ -12,18 +13,90 @@ type ChatResponse = {
   error?: unknown;
 };
 
+type ConversationResponse = {
+  conversationId?: unknown;
+  messages?: unknown;
+  error?: unknown;
+};
+
 export default function ChatPage() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
+  const [conversationId, setConversationId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const restoringConversation = useRef(false);
+
+  useEffect(() => {
+    const idFromUrl = new URLSearchParams(window.location.search).get(
+      "conversationId",
+    );
+
+    if (!idFromUrl) {
+      return;
+    }
+
+    const requestedId = idFromUrl;
+    restoringConversation.current = true;
+
+    async function loadConversation() {
+      try {
+        const response = await fetch(
+          `/api/conversations/${encodeURIComponent(requestedId)}`,
+        );
+        const data = (await response.json().catch(() => null)) as
+          | ConversationResponse
+          | null;
+
+        if (!response.ok) {
+          throw new Error(
+            typeof data?.error === "string"
+              ? data.error
+              : "The conversation could not be loaded.",
+          );
+        }
+
+        if (
+          !data ||
+          typeof data.conversationId !== "number" ||
+          !Array.isArray(data.messages) ||
+          !data.messages.every(
+            (message): message is Message & { id: number } =>
+              typeof message === "object" &&
+              message !== null &&
+              "id" in message &&
+              typeof message.id === "number" &&
+              "role" in message &&
+              (message.role === "user" || message.role === "assistant") &&
+              "content" in message &&
+              typeof message.content === "string",
+          )
+        ) {
+          throw new Error("The server returned an invalid conversation.");
+        }
+
+        setConversationId(data.conversationId);
+        setMessages(data.messages);
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "The conversation could not be loaded.",
+        );
+      } finally {
+        restoringConversation.current = false;
+      }
+    }
+
+    void loadConversation();
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const message = input.trim();
 
-    if (!message || isLoading) {
+    if (!message || isLoading || restoringConversation.current) {
       return;
     }
 
@@ -38,8 +111,35 @@ export default function ChatPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({
+          message,
+          ...(conversationId === null ? {} : { conversationId }),
+        }),
       });
+
+      const conversationIdHeader = response.headers.get("X-Conversation-Id");
+      const responseConversationId = Number(conversationIdHeader);
+
+      if (
+        conversationIdHeader !== null &&
+        Number.isSafeInteger(responseConversationId) &&
+        responseConversationId > 0
+      ) {
+        setConversationId(responseConversationId);
+
+        if (conversationId === null) {
+          const nextUrl = new URL(window.location.href);
+          nextUrl.searchParams.set(
+            "conversationId",
+            String(responseConversationId),
+          );
+          window.history.replaceState(
+            null,
+            "",
+            `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`,
+          );
+        }
+      }
 
       if (!response.ok) {
         const data = (await response.json().catch(() => null)) as
@@ -55,6 +155,14 @@ export default function ChatPage() {
 
       if (!response.body) {
         throw new Error("The server did not provide a response stream.");
+      }
+
+      if (
+        conversationIdHeader === null ||
+        !Number.isSafeInteger(responseConversationId) ||
+        responseConversationId <= 0
+      ) {
+        throw new Error("The server did not return a valid conversation ID.");
       }
 
       const assistantMessageIndex = messages.length + 1;

@@ -20,6 +20,9 @@
 # production
 /build
 
+# local SQLite database and journal files
+/aegis.db*
+
 # misc
 .DS_Store
 *.pem
