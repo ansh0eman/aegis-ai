@@ -9,7 +9,6 @@ type Message = {
 };
 
 type ChatResponse = {
-  reply?: unknown;
   error?: unknown;
 };
 
@@ -42,31 +41,60 @@ export default function ChatPage() {
         body: JSON.stringify({ message }),
       });
 
-      const data = (await response.json()) as ChatResponse;
-
       if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as
+          | ChatResponse
+          | null;
+
         throw new Error(
-          typeof data.error === "string"
+          typeof data?.error === "string"
             ? data.error
             : "The request could not be completed.",
         );
       }
 
-      if (typeof data.reply !== "string") {
-        throw new Error("The server returned an invalid response.");
+      if (!response.body) {
+        throw new Error("The server did not provide a response stream.");
       }
 
-      const reply = data.reply;
-
+      const assistantMessageIndex = messages.length + 1;
       setMessages((current) => [
         ...current,
-        { role: "assistant", content: reply },
+        { role: "assistant", content: "" },
       ]);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const appendAssistantText = (text: string) => {
+        if (!text) {
+          return;
+        }
+
+        setMessages((current) =>
+          current.map((item, index) =>
+            index === assistantMessageIndex
+              ? { ...item, content: item.content + text }
+              : item,
+          ),
+        );
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          break;
+        }
+
+        appendAssistantText(decoder.decode(value, { stream: true }));
+      }
+
+      appendAssistantText(decoder.decode());
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Something went wrong while sending the message.",
+          : "Something went wrong while receiving the response.",
       );
     } finally {
       setIsLoading(false);
