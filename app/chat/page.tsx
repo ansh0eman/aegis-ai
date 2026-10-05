@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { SubmitEvent, useState } from "react";
+import { useState, type FormEvent } from "react";
 
 type Message = {
   role: "user" | "assistant";
@@ -14,25 +14,22 @@ type ChatResponse = {
 };
 
 export default function ChatPage() {
+  const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const form = event.currentTarget;
-    const formData = new FormData(form);
-    const submittedMessage = formData.get("message");
-    const message =
-      typeof submittedMessage === "string" ? submittedMessage.trim() : "";
+    const message = input.trim();
 
     if (!message || isLoading) {
       return;
     }
 
     setMessages((current) => [...current, { role: "user", content: message }]);
-    form.reset();
+    setInput("");
     setError(null);
     setIsLoading(true);
 
@@ -139,6 +136,8 @@ export default function ChatPage() {
           id="message"
           name="message"
           type="text"
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
           placeholder="Type a message"
           required
           autoComplete="off"
@@ -147,7 +146,7 @@ export default function ChatPage() {
         />
         <button
           type="submit"
-          disabled={isLoading}
+          disabled={isLoading || !input.trim()}
           className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isLoading ? "Sending…" : "Send"}
