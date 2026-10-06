@@ -21,6 +21,10 @@ export default function Home() {
         >
           Open Workspace
         </Link>
+        <div className="mt-6 flex gap-5 text-sm font-medium text-slate-600">
+          <Link href="/login" className="hover:text-slate-950">Log in</Link>
+          <Link href="/register" className="hover:text-slate-950">Create account</Link>
+        </div>
       </section>
     </main>
   );

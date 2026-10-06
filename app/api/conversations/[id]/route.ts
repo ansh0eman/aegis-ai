@@ -1,6 +1,7 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { conversations, messages } from "@/db/schema";
+import { getCurrentUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -9,6 +10,11 @@ type RouteContext = {
 };
 
 export async function GET(_request: Request, context: RouteContext) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return Response.json({ error: "Please log in to view conversations." }, { status: 401 });
+  }
+
   const { id } = await context.params;
 
   if (!/^[1-9]\d*$/.test(id)) {
@@ -31,7 +37,7 @@ export async function GET(_request: Request, context: RouteContext) {
     const [conversation] = db
       .select({ id: conversations.id })
       .from(conversations)
-      .where(eq(conversations.id, conversationId))
+      .where(and(eq(conversations.id, conversationId), eq(conversations.userId, user.id)))
       .limit(1)
       .all();
 

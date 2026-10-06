@@ -27,6 +27,12 @@ OPENAI_API_KEY=your_api_key_here
 Next.js loads `.env.local` for server-side code. Keep this key out of browser
 code and do not rename it with a `NEXT_PUBLIC_` prefix. Git ignores `.env.local`.
 
+Authentication also requires a private `AUTH_SECRET` value in `.env.local`.
+It is used only by server code to sign session tokens. Do not add a `NEXT_PUBLIC_`
+prefix or commit `.env.local`. New accounts require a valid email and a password
+of at least 12 characters. Passwords are stored as Argon2id hashes; raw
+passwords are never stored.
+
 ## Available scripts
 
 - `npm run dev` starts the local development server.
@@ -48,13 +54,18 @@ can reload messages after a refresh.
 
 - `app/layout.tsx` defines the shared HTML shell and site metadata.
 - `app/page.tsx` defines the home page at `/`.
-- `app/chat/page.tsx` defines the interactive chat page at `/chat` and reads the
-  response stream in the browser and reloads saved messages by conversation ID.
+- `app/chat/page.tsx` checks the signed-in user on the server before rendering
+  the protected workspace; `app/chat/chat-client.tsx` handles streaming in the browser.
+- `app/login/page.tsx` and `app/register/page.tsx` render the simple auth forms.
+- `app/api/auth/` contains registration, login, and logout route handlers.
 - `app/api/chat/route.ts` handles `POST /api/chat` requests on the server and
   stores user/assistant messages through Drizzle while streaming text from the
   OpenAI Responses API.
-- `app/api/conversations/[id]/route.ts` loads saved messages for one conversation.
+- `app/api/conversations/[id]/route.ts` loads messages only after checking that
+  the signed-in user owns the conversation.
 - `db/schema.ts` defines the SQLite tables and their relationship.
+- `lib/auth.ts` verifies signed sessions and loads the current user on the server.
+- `lib/password.ts` hashes and verifies passwords on the server.
 - `db/index.ts` opens the server-only SQLite connection and creates the Drizzle
   client.
 - `app/globals.css` contains Tailwind CSS and global theme styles.

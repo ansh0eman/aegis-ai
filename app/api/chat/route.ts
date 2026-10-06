@@ -1,7 +1,8 @@
 import OpenAI from "openai";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { conversations, messages } from "@/db/schema";
+import { getCurrentUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,11 @@ type PromptMessage = {
 };
 
 export async function POST(request: Request) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return Response.json({ error: "Please log in to use the workspace." }, { status: 401 });
+  }
+
   let body: unknown;
 
   try {
@@ -70,7 +76,7 @@ export async function POST(request: Request) {
       activeConversationId = db.transaction((transaction) => {
         const conversation = transaction
           .insert(conversations)
-          .values({})
+          .values({ userId: user.id })
           .returning({ id: conversations.id })
           .get();
 
@@ -90,7 +96,7 @@ export async function POST(request: Request) {
         const [conversation] = transaction
           .select({ id: conversations.id })
           .from(conversations)
-          .where(eq(conversations.id, conversationId))
+          .where(and(eq(conversations.id, conversationId), eq(conversations.userId, user.id)))
           .limit(1)
           .all();
 
