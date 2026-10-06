@@ -1,9 +1,16 @@
 import OpenAI from "openai";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { conversations, messages } from "@/db/schema";
 
 export const runtime = "nodejs";
+
+const MAX_PREVIOUS_MESSAGES = 12;
+
+type PromptMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -56,6 +63,7 @@ export async function POST(request: Request) {
   }
 
   let activeConversationId: number;
+  let previousMessages: PromptMessage[] = [];
 
   try {
     if (conversationId === undefined) {
@@ -78,28 +86,48 @@ export async function POST(request: Request) {
         return conversation.id;
       });
     } else {
-      const [conversation] = db
-        .select({ id: conversations.id })
-        .from(conversations)
-        .where(eq(conversations.id, conversationId))
-        .limit(1)
-        .all();
+      const existingConversation = db.transaction((transaction) => {
+        const [conversation] = transaction
+          .select({ id: conversations.id })
+          .from(conversations)
+          .where(eq(conversations.id, conversationId))
+          .limit(1)
+          .all();
 
-      if (!conversation) {
+        if (!conversation) {
+          return null;
+        }
+
+        const history = transaction
+          .select({ role: messages.role, content: messages.content })
+          .from(messages)
+          .where(eq(messages.conversationId, conversationId))
+          .orderBy(desc(messages.id))
+          .limit(MAX_PREVIOUS_MESSAGES)
+          .all()
+          .reverse();
+
+        transaction
+          .insert(messages)
+          .values({
+            conversationId,
+            role: "user",
+            content: message,
+          })
+          .run();
+
+        return { id: conversation.id, history };
+      });
+
+      if (!existingConversation) {
         return Response.json(
           { error: "Conversation not found." },
           { status: 404 },
         );
       }
 
-      activeConversationId = conversation.id;
-      db.insert(messages)
-        .values({
-          conversationId: activeConversationId,
-          role: "user",
-          content: message,
-        })
-        .run();
+      activeConversationId = existingConversation.id;
+      previousMessages = existingConversation.history;
     }
   } catch {
     return Response.json(
@@ -112,7 +140,10 @@ export async function POST(request: Request) {
     const openai = new OpenAI({ apiKey });
     const openAIStream = await openai.responses.create({
       model: "gpt-6-luna",
-      input: message,
+      input: [
+        ...previousMessages,
+        { role: "user", content: message },
+      ],
       stream: true,
     });
 
