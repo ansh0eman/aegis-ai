@@ -11,7 +11,9 @@ const globalForDatabase = globalThis as typeof globalThis & {
 
 const sqlite =
   globalForDatabase.aegisSqlite ??
-  new Database(resolve(process.cwd(), "aegis.db"));
+  new Database(
+    resolve(process.cwd(), process.env.AEGIS_DATABASE_PATH ?? "aegis.db"),
+  );
 
 sqlite.pragma("foreign_keys = ON");
 globalForDatabase.aegisSqlite = sqlite;

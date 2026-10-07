@@ -61,7 +61,9 @@ The server stores conversations in `aegis.db` at the project root. This local
 SQLite file is ignored by Git. Table structure lives in `db/schema.ts`; generated
 SQL migrations are kept in `drizzle/`. Run migrations with `npm run db:migrate`
 after generating them. Conversation IDs appear in the `/chat` URL so the page
-can reload messages after a refresh.
+can reload messages after a refresh. For isolated local testing, both the app and
+Drizzle CLI accept the server-side `AEGIS_DATABASE_PATH` environment variable;
+otherwise they use `./aegis.db`.
 
 ## Project structure
 
@@ -75,6 +77,8 @@ can reload messages after a refresh.
   guarded by the server-side role helper. The admin page provisions member
   accounts in small batches and lets admins enable or disable accounts.
 - `app/api/admin/users/[id]/route.ts` updates one account's active/disabled status.
+- `app/admin/audit/page.tsx` and `app/api/admin/audit/route.ts` show the latest
+  account provisioning and status-change events to admins.
 - `app/api/chat/route.ts` handles `POST /api/chat` requests on the server and
   stores user/assistant messages through Drizzle while streaming text from the
   OpenAI Responses API.
@@ -86,6 +90,8 @@ can reload messages after a refresh.
   active members; disabled users cannot log in or use existing sessions.
 - `lib/auth.ts` verifies signed sessions and loads the current user on the server.
 - `lib/authorization.ts` centralizes authenticated-user and admin checks.
+- `lib/audit.ts` writes audit entries in the same transaction as user mutations
+  and reads a safe, newest-first list for admin views.
 - `lib/password.ts` hashes and verifies passwords on the server.
 - `db/index.ts` opens the server-only SQLite connection and creates the Drizzle
   client.

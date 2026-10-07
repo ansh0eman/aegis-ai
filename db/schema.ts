@@ -10,6 +10,11 @@ import {
 
 export type UserRole = "admin" | "member";
 export type UserStatus = "active" | "disabled";
+export type AuditAction =
+  | "user.provisioned"
+  | "user.disabled"
+  | "user.enabled";
+export type AuditMetadata = Record<string, string | number | boolean | null>;
 
 export const users = sqliteTable(
   "users",
@@ -34,6 +39,35 @@ export const users = sqliteTable(
       "users_status_check",
       sql`${table.status} in ('active', 'disabled')`,
     ),
+  ],
+);
+
+export const auditLogs = sqliteTable(
+  "audit_logs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    actorUserId: integer("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    targetUserId: integer("target_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    action: text("action", {
+      enum: ["user.provisioned", "user.disabled", "user.enabled"],
+    }).notNull(),
+    metadata: text("metadata", { mode: "json" }).$type<AuditMetadata>(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    check(
+      "audit_logs_action_check",
+      sql`${table.action} in ('user.provisioned', 'user.disabled', 'user.enabled')`,
+    ),
+    index("audit_logs_actor_user_id_idx").on(table.actorUserId),
+    index("audit_logs_target_user_id_idx").on(table.targetUserId),
+    index("audit_logs_created_at_idx").on(table.createdAt),
   ],
 );
 

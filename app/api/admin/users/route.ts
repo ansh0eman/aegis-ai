@@ -7,6 +7,7 @@ import {
   isValidPassword,
   normalizeEmail,
 } from "@/lib/auth-validation";
+import { writeAuditLog } from "@/lib/audit";
 import { hashPassword } from "@/lib/password";
 
 export const runtime = "nodejs";
@@ -184,8 +185,17 @@ export async function POST(request: Request) {
           })
           .all();
 
-        if (inserted) created.set(user.index, inserted);
-        else failures.set(user.index, "already_exists");
+        if (inserted) {
+          created.set(user.index, inserted);
+          writeAuditLog(transaction, {
+            actorUserId: access.user.id,
+            action: "user.provisioned",
+            targetUserId: inserted.id,
+            metadata: { email: inserted.email },
+          });
+        } else {
+          failures.set(user.index, "already_exists");
+        }
       }
     });
 

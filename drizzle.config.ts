@@ -5,6 +5,6 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "sqlite",
   dbCredentials: {
-    url: "./aegis.db",
+    url: process.env.AEGIS_DATABASE_PATH ?? "./aegis.db",
   },
 });

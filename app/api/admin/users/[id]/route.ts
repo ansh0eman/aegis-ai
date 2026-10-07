@@ -1,7 +1,9 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
+import type { UserStatus } from "@/db/schema";
 import { accessErrorResponse, requireAdmin } from "@/lib/authorization";
+import { writeAuditLog } from "@/lib/audit";
 
 export const runtime = "nodejs";
 
@@ -36,8 +38,9 @@ export async function PATCH(request: Request, context: RouteContext) {
       { status: 400 },
     );
   }
+  const requestedStatus = body.status as UserStatus;
 
-  if (userId === access.user.id && body.status === "disabled") {
+  if (userId === access.user.id && requestedStatus === "disabled") {
     return Response.json(
       { error: "You cannot disable your own account." },
       { status: 409 },
@@ -45,18 +48,46 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   try {
-    const [user] = db
-      .update(users)
-      .set({ status: body.status })
-      .where(eq(users.id, userId))
-      .returning({
-        id: users.id,
-        email: users.email,
-        role: users.role,
-        status: users.status,
-        createdAt: users.createdAt,
-      })
-      .all();
+    const user = db.transaction((transaction) => {
+      const [currentUser] = transaction
+        .select({ status: users.status })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1)
+        .all();
+
+      if (!currentUser) return null;
+
+      const [updatedUser] = transaction
+        .update(users)
+        .set({ status: requestedStatus })
+        .where(eq(users.id, userId))
+        .returning({
+          id: users.id,
+          email: users.email,
+          role: users.role,
+          status: users.status,
+          createdAt: users.createdAt,
+        })
+        .all();
+
+      if (updatedUser && currentUser.status !== updatedUser.status) {
+        writeAuditLog(transaction, {
+          actorUserId: access.user.id,
+          action:
+            updatedUser.status === "disabled"
+              ? "user.disabled"
+              : "user.enabled",
+          targetUserId: updatedUser.id,
+          metadata: {
+            from: currentUser.status,
+            to: updatedUser.status,
+          },
+        });
+      }
+
+      return updatedUser ?? null;
+    });
 
     if (!user) {
       return Response.json({ error: "User not found." }, { status: 404 });

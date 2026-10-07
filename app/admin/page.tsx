@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { requireAdmin } from "@/lib/authorization";
@@ -38,6 +39,12 @@ export default async function AdminPage() {
       <p className="mt-2 text-sm text-slate-600">
         Signed in as {access.user.email}
       </p>
+      <Link
+        href="/admin/audit"
+        className="mt-3 inline-block text-sm font-semibold text-blue-700 hover:text-blue-900"
+      >
+        View audit log
+      </Link>
       <AdminUsersClient users={safeUsers} currentUserId={access.user.id} />
     </main>
   );

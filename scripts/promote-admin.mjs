@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
 if (process.env.NODE_ENV === "production") {
   console.error("This local-only tool cannot run in production.");
@@ -12,7 +12,10 @@ if (!email || process.argv[3] !== "--local" || process.argv.length !== 4) {
   process.exit(1);
 }
 
-const databasePath = fileURLToPath(new URL("../aegis.db", import.meta.url));
+const databasePath = resolve(
+  process.cwd(),
+  process.env.AEGIS_DATABASE_PATH ?? "aegis.db",
+);
 const database = new Database(databasePath);
 try {
   const result = database
