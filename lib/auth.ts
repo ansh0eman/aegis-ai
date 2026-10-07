@@ -4,10 +4,16 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { users, type UserRole } from "@/db/schema";
 
 const COOKIE_NAME = "aegis_session";
 const SESSION_SECONDS = 60 * 60 * 24 * 7;
+
+export type CurrentUser = {
+  id: number;
+  email: string;
+  role: UserRole;
+};
 
 function getSecret() {
   const secret = process.env.AUTH_SECRET;
@@ -52,7 +58,7 @@ export async function getCurrentUser() {
     if (!Number.isSafeInteger(userId) || userId <= 0) return null;
 
     const [user] = db
-      .select({ id: users.id, email: users.email })
+      .select({ id: users.id, email: users.email, role: users.role })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1)

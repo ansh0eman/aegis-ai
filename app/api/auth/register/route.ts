@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     const passwordHash = await hashPassword(password);
     const [user] = db
       .insert(users)
-      .values({ email, passwordHash })
+      .values({ email, passwordHash, role: "member" })
       .onConflictDoNothing({ target: users.email })
       .returning({ id: users.id, email: users.email })
       .all();

@@ -33,6 +33,19 @@ prefix or commit `.env.local`. New accounts require a valid email and a password
 of at least 12 characters. Passwords are stored as Argon2id hashes; raw
 passwords are never stored.
 
+## Local admin access
+
+There is no public role-change endpoint. To promote one existing account in the
+local development database, register it normally, then run:
+
+```bash
+npm run db:promote-admin -- user@example.com --local
+```
+
+The command updates only that email in local `aegis.db`. It refuses to run when
+`NODE_ENV=production`. After promotion, log out and back in; the server loads
+the role from SQLite on each request rather than trusting a role in the JWT.
+
 ## Available scripts
 
 - `npm run dev` starts the local development server.
@@ -58,6 +71,8 @@ can reload messages after a refresh.
   the protected workspace; `app/chat/chat-client.tsx` handles streaming in the browser.
 - `app/login/page.tsx` and `app/register/page.tsx` render the simple auth forms.
 - `app/api/auth/` contains registration, login, and logout route handlers.
+- `app/admin/page.tsx` and `app/api/admin/users/route.ts` are admin-only views
+  guarded by the server-side role helper.
 - `app/api/chat/route.ts` handles `POST /api/chat` requests on the server and
   stores user/assistant messages through Drizzle while streaming text from the
   OpenAI Responses API.
@@ -65,6 +80,7 @@ can reload messages after a refresh.
   the signed-in user owns the conversation.
 - `db/schema.ts` defines the SQLite tables and their relationship.
 - `lib/auth.ts` verifies signed sessions and loads the current user on the server.
+- `lib/authorization.ts` centralizes authenticated-user and admin checks.
 - `lib/password.ts` hashes and verifies passwords on the server.
 - `db/index.ts` opens the server-only SQLite connection and creates the Drizzle
   client.

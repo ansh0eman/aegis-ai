@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:promote-admin": "node scripts/promote-admin.mjs"
   },
   "dependencies": {
     "argon2": "^0.45.1",

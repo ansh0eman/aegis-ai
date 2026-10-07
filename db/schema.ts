@@ -8,17 +8,25 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
+export type UserRole = "admin" | "member";
+
 export const users = sqliteTable(
   "users",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     email: text("email").notNull(),
     passwordHash: text("password_hash").notNull(),
+    role: text("role", { enum: ["admin", "member"] })
+      .notNull()
+      .default("member"),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .$defaultFn(() => new Date()),
   },
-  (table) => [uniqueIndex("users_email_unique").on(table.email)],
+  (table) => [
+    uniqueIndex("users_email_unique").on(table.email),
+    check("users_role_check", sql`${table.role} in ('admin', 'member')`),
+  ],
 );
 
 export const conversations = sqliteTable("conversations", {
