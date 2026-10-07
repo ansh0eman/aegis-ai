@@ -9,6 +9,7 @@ import {
 } from "drizzle-orm/sqlite-core";
 
 export type UserRole = "admin" | "member";
+export type UserStatus = "active" | "disabled";
 
 export const users = sqliteTable(
   "users",
@@ -19,6 +20,9 @@ export const users = sqliteTable(
     role: text("role", { enum: ["admin", "member"] })
       .notNull()
       .default("member"),
+    status: text("status", { enum: ["active", "disabled"] })
+      .notNull()
+      .default("active"),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -26,6 +30,10 @@ export const users = sqliteTable(
   (table) => [
     uniqueIndex("users_email_unique").on(table.email),
     check("users_role_check", sql`${table.role} in ('admin', 'member')`),
+    check(
+      "users_status_check",
+      sql`${table.status} in ('active', 'disabled')`,
+    ),
   ],
 );
 

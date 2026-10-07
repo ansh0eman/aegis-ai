@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { createSession } from "@/lib/auth";
+import { normalizeEmail } from "@/lib/auth-validation";
 import { verifyPassword } from "@/lib/password";
 
 export const runtime = "nodejs";
@@ -23,10 +24,13 @@ export async function POST(request: Request) {
     return Response.json({ error: "Email and password are required." }, { status: 400 });
   }
 
-  const email = body.email.trim().toLowerCase();
+  const email = normalizeEmail(body.email);
   try {
     const [user] = db.select().from(users).where(eq(users.email, email)).limit(1).all();
     if (!user || !(await verifyPassword(user.passwordHash, body.password))) {
+      return Response.json({ error: "Invalid email or password." }, { status: 401 });
+    }
+    if (user.status !== "active") {
       return Response.json({ error: "Invalid email or password." }, { status: 401 });
     }
     await createSession(user.id);

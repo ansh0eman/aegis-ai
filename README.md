@@ -72,13 +72,18 @@ can reload messages after a refresh.
 - `app/login/page.tsx` and `app/register/page.tsx` render the simple auth forms.
 - `app/api/auth/` contains registration, login, and logout route handlers.
 - `app/admin/page.tsx` and `app/api/admin/users/route.ts` are admin-only views
-  guarded by the server-side role helper.
+  guarded by the server-side role helper. The admin page provisions member
+  accounts in small batches and lets admins enable or disable accounts.
+- `app/api/admin/users/[id]/route.ts` updates one account's active/disabled status.
 - `app/api/chat/route.ts` handles `POST /api/chat` requests on the server and
   stores user/assistant messages through Drizzle while streaming text from the
   OpenAI Responses API.
 - `app/api/conversations/[id]/route.ts` loads messages only after checking that
   the signed-in user owns the conversation.
 - `db/schema.ts` defines the SQLite tables and their relationship.
+- Users have a database-constrained `member`/`admin` role and
+  `active`/`disabled` status. Registration and provisioning always create
+  active members; disabled users cannot log in or use existing sessions.
 - `lib/auth.ts` verifies signed sessions and loads the current user on the server.
 - `lib/authorization.ts` centralizes authenticated-user and admin checks.
 - `lib/password.ts` hashes and verifies passwords on the server.

@@ -1,6 +1,11 @@
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { createSession } from "@/lib/auth";
+import {
+  isValidEmail,
+  isValidPassword,
+  normalizeEmail,
+} from "@/lib/auth-validation";
 import { hashPassword } from "@/lib/password";
 
 export const runtime = "nodejs";
@@ -21,12 +26,12 @@ export async function POST(request: Request) {
     return Response.json({ error: "Email and password are required." }, { status: 400 });
   }
 
-  const email = body.email.trim().toLowerCase();
+  const email = normalizeEmail(body.email);
   const password = body.password;
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!isValidEmail(email)) {
     return Response.json({ error: "Enter a valid email address." }, { status: 400 });
   }
-  if (password.length < 12 || password.length > 128) {
+  if (!isValidPassword(password)) {
     return Response.json({ error: "Password must be 12–128 characters." }, { status: 400 });
   }
 
@@ -34,7 +39,12 @@ export async function POST(request: Request) {
     const passwordHash = await hashPassword(password);
     const [user] = db
       .insert(users)
-      .values({ email, passwordHash, role: "member" })
+      .values({
+        email,
+        passwordHash,
+        role: "member",
+        status: "active",
+      })
       .onConflictDoNothing({ target: users.email })
       .returning({ id: users.id, email: users.email })
       .all();
