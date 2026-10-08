@@ -75,16 +75,22 @@ otherwise they use `./aegis.db`.
 - `app/api/auth/` contains registration, login, and logout route handlers.
 - `app/admin/page.tsx` and `app/api/admin/users/route.ts` are admin-only views
   guarded by the server-side role helper. The admin page provisions member
-  accounts in small batches and lets admins enable or disable accounts.
+  accounts in small batches, lets admins enable or disable accounts, and edit a
+  user's AI policy inline.
 - `app/api/admin/users/[id]/route.ts` updates one account's active/disabled status.
+- `app/api/admin/users/[id]/ai-policy/route.ts` lets admins read and update a
+  user's AI policy; `/admin` exposes the small inline editor.
 - `app/admin/audit/page.tsx` and `app/api/admin/audit/route.ts` show the latest
   account provisioning and status-change events to admins.
 - `app/api/chat/route.ts` handles `POST /api/chat` requests on the server and
-  stores user/assistant messages through Drizzle while streaming text from the
-  OpenAI Responses API.
+  checks the user's AI policy and UTC-day usage before writing messages or
+  streaming text from the OpenAI Responses API.
 - `app/api/conversations/[id]/route.ts` loads messages only after checking that
   the signed-in user owns the conversation.
-- `db/schema.ts` defines the SQLite tables and their relationship.
+- `db/schema.ts` defines the SQLite tables and their relationships. AI policy
+  rows are optional; users without one receive the defaults (AI enabled, 4,000
+  prompt characters, and 100 accepted requests per UTC day). `ai_usage` records
+  accepted requests, not tokens or successful completions.
 - Users have a database-constrained `member`/`admin` role and
   `active`/`disabled` status. Registration and provisioning always create
   active members; disabled users cannot log in or use existing sessions.
@@ -92,6 +98,7 @@ otherwise they use `./aegis.db`.
 - `lib/authorization.ts` centralizes authenticated-user and admin checks.
 - `lib/audit.ts` writes audit entries in the same transaction as user mutations
   and reads a safe, newest-first list for admin views.
+- `lib/ai-policy.ts` contains server-side policy defaults and database fallback.
 - `lib/password.ts` hashes and verifies passwords on the server.
 - `db/index.ts` opens the server-only SQLite connection and creates the Drizzle
   client.

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { Fragment, useState, type FormEvent } from "react";
 import type { UserRole, UserStatus } from "@/db/schema";
+import AiPolicyEditor from "./ai-policy-editor";
 
 export type AdminUser = {
   id: number;
@@ -29,6 +30,7 @@ export default function AdminUsersClient({
   const [provisionResult, setProvisionResult] =
     useState<ProvisionResult | null>(null);
   const [pendingId, setPendingId] = useState<number | null>(null);
+  const [policyUserId, setPolicyUserId] = useState<number | null>(null);
   const [isProvisioning, setIsProvisioning] = useState(false);
 
   async function updateStatus(user: AdminUser) {
@@ -199,34 +201,54 @@ export default function AdminUsersClient({
           </thead>
           <tbody className="divide-y divide-slate-100">
             {users.map((user) => (
-              <tr key={user.id}>
-                <td className="px-4 py-3">{user.id}</td>
-                <td className="px-4 py-3">{user.email}</td>
-                <td className="px-4 py-3">{user.role}</td>
-                <td className="px-4 py-3">{user.status}</td>
-                <td className="px-4 py-3">
-                  <time dateTime={user.createdAt}>
-                    {new Date(user.createdAt).toLocaleString()}
-                  </time>
-                </td>
-                <td className="px-4 py-3">
-                  <button
-                    type="button"
-                    onClick={() => void updateStatus(user)}
-                    disabled={
-                      pendingId === user.id ||
-                      (user.id === currentUserId && user.status === "active")
-                    }
-                    className="font-semibold text-blue-700 hover:text-blue-900 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {pendingId === user.id
-                      ? "Saving…"
-                      : user.status === "active"
-                        ? "Disable"
-                        : "Enable"}
-                  </button>
-                </td>
-              </tr>
+              <Fragment key={user.id}>
+                <tr>
+                  <td className="px-4 py-3">{user.id}</td>
+                  <td className="px-4 py-3">{user.email}</td>
+                  <td className="px-4 py-3">{user.role}</td>
+                  <td className="px-4 py-3">{user.status}</td>
+                  <td className="px-4 py-3">
+                    <time dateTime={user.createdAt}>
+                      {new Date(user.createdAt).toLocaleString()}
+                    </time>
+                  </td>
+                  <td className="space-x-3 px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => void updateStatus(user)}
+                      disabled={
+                        pendingId === user.id ||
+                        (user.id === currentUserId && user.status === "active")
+                      }
+                      className="font-semibold text-blue-700 hover:text-blue-900 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {pendingId === user.id
+                        ? "Saving…"
+                        : user.status === "active"
+                          ? "Disable"
+                          : "Enable"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPolicyUserId((current) =>
+                          current === user.id ? null : user.id,
+                        )
+                      }
+                      className="font-semibold text-slate-700 hover:text-slate-950"
+                    >
+                      {policyUserId === user.id ? "Close policy" : "AI policy"}
+                    </button>
+                  </td>
+                </tr>
+                {policyUserId === user.id ? (
+                  <tr>
+                    <td colSpan={6} className="bg-slate-50 px-4 py-4">
+                      <AiPolicyEditor userId={user.id} email={user.email} />
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
             ))}
           </tbody>
         </table>
