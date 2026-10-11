@@ -2,7 +2,9 @@ import OpenAI from "openai";
 import { and, count, desc, eq, gte, lt } from "drizzle-orm";
 import { db } from "@/db";
 import { aiPolicies, aiUsage, conversations, messages } from "@/db/schema";
+import { streamChatEvents } from "@/lib/chat-stream";
 import { DEFAULT_AI_POLICY, getEffectiveAiPolicy } from "@/lib/ai-policy";
+import { encodeSseEvent } from "@/lib/sse";
 import { getCurrentUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -246,66 +248,104 @@ export async function POST(request: Request) {
 
   const activeConversationId = admission.conversationId;
 
-  try {
-    const openai = new OpenAI({ apiKey });
-    const openAIStream = await openai.responses.create({
-      model: "gpt-6-luna",
-      input: [...admission.history, { role: "user", content: message }],
-      stream: true,
-    });
+  const upstreamAbortController = new AbortController();
+  let clientCancelled = false;
+  type AbortableProviderStream = AsyncIterable<{
+    type: string;
+    delta?: unknown;
+  }> & { controller: AbortController };
+  let openAIStream: AbortableProviderStream | undefined;
+  const cancelUpstream = () => {
+    clientCancelled = true;
+    if (!upstreamAbortController.signal.aborted) {
+      upstreamAbortController.abort();
+    }
+    openAIStream?.controller.abort();
+  };
+  const removeRequestAbortListener = () => {
+    request.signal.removeEventListener("abort", cancelUpstream);
+  };
+  request.signal.addEventListener("abort", cancelUpstream, { once: true });
 
-    const encoder = new TextEncoder();
-    const responseStream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        void (async () => {
-          let assistantText = "";
+  if (request.signal.aborted) {
+    cancelUpstream();
+    removeRequestAbortListener();
+    return new Response(null, { status: 204 });
+  }
 
+  const encoder = new TextEncoder();
+  const responseStream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      void (async () => {
+        const send = (event: Parameters<typeof encodeSseEvent>[0]) => {
+          if (clientCancelled) return false;
           try {
-            for await (const event of openAIStream) {
-              if (event.type === "response.output_text.delta") {
-                assistantText += event.delta;
-                controller.enqueue(encoder.encode(event.delta));
-              } else if (
-                event.type === "error" ||
-                event.type === "response.failed" ||
-                event.type === "response.incomplete"
-              ) {
-                controller.error(new Error("The AI response stream failed."));
-                return;
-              }
-            }
+            controller.enqueue(encoder.encode(encodeSseEvent(event)));
+            return true;
+          } catch {
+            cancelUpstream();
+            return false;
+          }
+        };
 
-            db.insert(messages)
-              .values({
-                conversationId: activeConversationId,
-                role: "assistant",
-                content: assistantText,
-              })
-              .run();
+        try {
+          const openai = new OpenAI({ apiKey });
+          openAIStream = (await openai.responses.create(
+            {
+              model: "gpt-6-luna",
+              input: [...admission.history, { role: "user", content: message }],
+              stream: true,
+            },
+            { signal: upstreamAbortController.signal },
+          )) as AbortableProviderStream;
 
+          if (clientCancelled || upstreamAbortController.signal.aborted) return;
+
+          for await (const event of streamChatEvents(
+            openAIStream,
+            activeConversationId,
+            (content) => {
+              db.insert(messages)
+                .values({
+                  conversationId: activeConversationId,
+                  role: "assistant",
+                  content,
+                })
+                .run();
+            },
+            upstreamAbortController.signal,
+          )) {
+            if (!send(event)) return;
+          }
+        } catch {
+          send({
+            event: "error",
+            data: {
+              message: "The AI service is unavailable. Please try again.",
+            },
+          });
+        } finally {
+          removeRequestAbortListener();
+          try {
             controller.close();
           } catch {
-            controller.error(new Error("The AI response stream failed."));
+            // A canceled response body is already closed from the browser's side.
           }
-        })();
-      },
-    });
+        }
+      })();
+    },
+    cancel() {
+      cancelUpstream();
+      removeRequestAbortListener();
+    },
+  });
 
-    return new Response(responseStream, {
-      headers: {
-        "Cache-Control": "no-cache, no-transform",
-        "Content-Type": "text/plain; charset=utf-8",
-        "X-Content-Type-Options": "nosniff",
-        "X-Conversation-Id": String(activeConversationId),
-      },
-    });
-  } catch {
-    return Response.json(
-      { error: "The AI service is unavailable. Please try again." },
-      {
-        status: 502,
-        headers: { "X-Conversation-Id": String(activeConversationId) },
-      },
-    );
-  }
+  return new Response(responseStream, {
+    headers: {
+      "Cache-Control": "no-cache, no-transform",
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+      "X-Conversation-Id": String(activeConversationId),
+    },
+  });
 }

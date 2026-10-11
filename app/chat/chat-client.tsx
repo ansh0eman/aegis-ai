@@ -3,13 +3,25 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { parseSseJsonData, SseParser } from "@/lib/sse";
 
-type Message = { id?: number; role: "user" | "assistant"; content: string };
+type Message = {
+  id?: number;
+  role: "user" | "assistant";
+  content: string;
+  status?: "interrupted" | "failed";
+};
 type ChatResponse = { error?: unknown };
 type ConversationResponse = {
   conversationId?: unknown;
   messages?: unknown;
   error?: unknown;
+};
+type ActiveRequest = {
+  id: number;
+  controller: AbortController;
+  assistantMessageIndex: number;
+  reader?: ReadableStreamDefaultReader<Uint8Array>;
 };
 
 export default function ChatClient({ email }: { email: string }) {
@@ -20,6 +32,8 @@ export default function ChatClient({ email }: { email: string }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const restoringConversation = useRef(false);
+  const activeRequest = useRef<ActiveRequest | null>(null);
+  const nextRequestId = useRef(0);
 
   useEffect(() => {
     const idFromUrl = new URLSearchParams(window.location.search).get(
@@ -58,8 +72,9 @@ export default function ChatClient({ email }: { email: string }) {
               "content" in message &&
               typeof message.content === "string",
           )
-        )
+        ) {
           throw new Error("The server returned an invalid conversation.");
+        }
         setConversationId(data.conversationId);
         setMessages(data.messages);
       } catch (loadError) {
@@ -75,14 +90,59 @@ export default function ChatClient({ email }: { email: string }) {
     void loadConversation();
   }, []);
 
+  useEffect(
+    () => () => {
+      const current = activeRequest.current;
+      activeRequest.current = null;
+      current?.controller.abort();
+      if (current?.reader) void current.reader.cancel().catch(() => {});
+    },
+    [],
+  );
+
+  function stopGenerating() {
+    const current = activeRequest.current;
+    if (!current) return;
+
+    activeRequest.current = null;
+    current.controller.abort();
+    if (current.reader) void current.reader.cancel().catch(() => {});
+    setMessages((existing) =>
+      existing.map((message, index) =>
+        index === current.assistantMessageIndex
+          ? { ...message, status: "interrupted" }
+          : message,
+      ),
+    );
+    setIsLoading(false);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const message = input.trim();
-    if (!message || isLoading || restoringConversation.current) return;
-    setMessages((current) => [...current, { role: "user", content: message }]);
+    if (
+      !message ||
+      activeRequest.current ||
+      restoringConversation.current
+    ) {
+      return;
+    }
+
+    const requestId = ++nextRequestId.current;
+    const controller = new AbortController();
+    const assistantMessageIndex = messages.length + 1;
+    activeRequest.current = { id: requestId, controller, assistantMessageIndex };
+    setMessages((existing) => [
+      ...existing,
+      { role: "user", content: message },
+      { role: "assistant", content: "" },
+    ]);
     setInput("");
     setError(null);
     setIsLoading(true);
+
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    let streamStarted = false;
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -91,7 +151,10 @@ export default function ChatClient({ email }: { email: string }) {
           message,
           ...(conversationId === null ? {} : { conversationId }),
         }),
+        signal: controller.signal,
       });
+      if (activeRequest.current?.id !== requestId) return;
+
       const idHeader = response.headers.get("X-Conversation-Id");
       const responseId = Number(idHeader);
       if (idHeader && Number.isSafeInteger(responseId) && responseId > 0) {
@@ -106,56 +169,132 @@ export default function ChatClient({ email }: { email: string }) {
           );
         }
       }
+
       if (!response.ok) {
         const data = (await response
           .json()
           .catch(() => null)) as ChatResponse | null;
+        setMessages((existing) =>
+          existing.filter((_, index) => index !== assistantMessageIndex),
+        );
         throw new Error(
           typeof data?.error === "string"
             ? data.error
             : "The request could not be completed.",
         );
       }
+
+      streamStarted = true;
+      const contentType = response.headers.get("Content-Type") ?? "";
       if (
         !response.body ||
         !idHeader ||
         !Number.isSafeInteger(responseId) ||
-        responseId <= 0
+        responseId <= 0 ||
+        !contentType.toLowerCase().includes("text/event-stream")
       ) {
-        throw new Error("The server did not provide a valid response stream.");
+        throw new Error("The server did not provide a valid event stream.");
       }
 
-      const assistantMessageIndex = messages.length + 1;
-      setMessages((current) => [
-        ...current,
-        { role: "assistant", content: "" },
-      ]);
-      const reader = response.body.getReader();
+      reader = response.body.getReader();
+      const current = activeRequest.current;
+      if (!current || current.id !== requestId) {
+        await reader.cancel();
+        return;
+      }
+      current.reader = reader;
+
+      const parser = new SseParser();
       const decoder = new TextDecoder();
-      const append = (text: string) => {
-        if (!text) return;
-        setMessages((current) =>
-          current.map((item, index) =>
+      let receivedDone = false;
+
+      const appendText = (text: string) => {
+        setMessages((existing) => {
+          if (activeRequest.current?.id !== requestId) return existing;
+          return existing.map((item, index) =>
             index === assistantMessageIndex
               ? { ...item, content: item.content + text }
               : item,
-          ),
-        );
+          );
+        });
       };
+
+      const processEvents = (events: ReturnType<SseParser["feed"]>) => {
+        for (const event of events) {
+          if (activeRequest.current?.id !== requestId) return;
+          if (receivedDone) {
+            throw new Error("The response stream continued after completion.");
+          }
+
+          if (event.event === "delta") {
+            const payload = parseSseJsonData(event.data);
+            if (typeof payload.text !== "string") {
+              throw new Error("The response stream contained invalid data.");
+            }
+            appendText(payload.text);
+          } else if (event.event === "done") {
+            const payload = parseSseJsonData(event.data);
+            if (payload.conversationId !== responseId) {
+              throw new Error("The response stream contained invalid data.");
+            }
+            receivedDone = true;
+          } else if (event.event === "error") {
+            const payload = parseSseJsonData(event.data);
+            const safeMessage =
+              typeof payload.message === "string"
+                ? payload.message.slice(0, 240)
+                : "The response could not be completed. Partial text was not saved.";
+            throw new Error(safeMessage);
+          }
+        }
+      };
+
       while (true) {
         const { done, value } = await reader.read();
+        if (activeRequest.current?.id !== requestId) return;
         if (done) break;
-        append(decoder.decode(value, { stream: true }));
+        processEvents(parser.feed(decoder.decode(value, { stream: true })));
       }
-      append(decoder.decode());
+      processEvents(parser.feed(decoder.decode()));
+      if (!receivedDone) {
+        throw new Error("The response ended early. This partial reply was not saved.");
+      }
     } catch (requestError) {
-      setError(
+      if (activeRequest.current?.id !== requestId) return;
+      if (reader) void reader.cancel().catch(() => {});
+
+      const messageText =
         requestError instanceof Error
           ? requestError.message
-          : "Something went wrong while receiving the response.",
-      );
+          : "Something went wrong while receiving the response.";
+      if (streamStarted) {
+        setMessages((existing) =>
+          existing.map((item, index) =>
+            index === assistantMessageIndex
+              ? { ...item, status: "failed" }
+              : item,
+          ),
+        );
+      } else {
+        setMessages((existing) =>
+          existing.filter((_, index) => index !== assistantMessageIndex),
+        );
+      }
+      setError(messageText);
     } finally {
-      setIsLoading(false);
+      if (reader) {
+        const current = activeRequest.current;
+        if (current?.id === requestId) current.reader = undefined;
+        try {
+          reader.releaseLock();
+        } catch {
+          // The response body may already have been canceled.
+        }
+      }
+      if (activeRequest.current?.id === requestId) {
+        activeRequest.current = null;
+        setIsLoading(false);
+      }
     }
   }
 
@@ -213,11 +352,18 @@ export default function ChatClient({ email }: { email: string }) {
                 {message.role === "user" ? "You" : "Aegis AI"}
               </span>
               {message.content}
+              {message.status ? (
+                <span className="mt-2 block text-xs font-medium text-amber-800">
+                  {message.status === "interrupted"
+                    ? "Interrupted — this partial reply was not saved."
+                    : "Incomplete — this partial reply was not saved."}
+                </span>
+              ) : null}
             </div>
           ))
         )}
         {isLoading ? (
-          <p className="text-sm text-slate-500">Waiting for a response…</p>
+          <p className="text-sm text-slate-500">Generating response…</p>
         ) : null}
       </section>
       {error ? (
@@ -241,13 +387,23 @@ export default function ChatClient({ email }: { email: string }) {
           disabled={isLoading}
           className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
         />
-        <button
-          type="submit"
-          disabled={isLoading || !input.trim()}
-          className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {isLoading ? "Sending…" : "Send"}
-        </button>
+        {isLoading ? (
+          <button
+            type="button"
+            onClick={stopGenerating}
+            className="rounded-lg bg-slate-700 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-900"
+          >
+            Stop Generating
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Send
+          </button>
+        )}
       </form>
     </main>
   );
