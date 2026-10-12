@@ -33,6 +33,12 @@ prefix or commit `.env.local`. New accounts require a valid email and a password
 of at least 12 characters. Passwords are stored as Argon2id hashes; raw
 passwords are never stored.
 
+Public registration is available in development but closed by default when
+`NODE_ENV=production`. For a limited onboarding window, set
+`AEGIS_ALLOW_PUBLIC_REGISTRATION=true`, create the initial account, then remove
+that setting and restart. Use a controlled operator procedure to bootstrap a
+production admin account.
+
 ## Local admin access
 
 There is no public role-change endpoint. To promote one existing account in the
@@ -50,6 +56,8 @@ the role from SQLite on each request rather than trusting a role in the JWT.
 
 - `npm run dev` starts the local development server.
 - `npm run lint` checks the code with ESLint.
+- `npm run test:sse` and `npm run test:step11` run focused streaming and isolated
+  SQLite integrity tests.
 - `npm run build` creates a production build and runs Next.js type checks.
 - `npm run start` serves the production build.
 - `npm run db:generate` creates a migration from changes to `db/schema.ts`.
@@ -102,5 +110,9 @@ otherwise they use `./aegis.db`.
 - `lib/password.ts` hashes and verifies passwords on the server.
 - `db/index.ts` opens the server-only SQLite connection and creates the Drizzle
   client.
+- Production deployment should use a persistent SQLite volume or another
+  explicitly supported persistent host. The app does not configure WAL; SQLite
+  still has a single writer, and a local file may be ephemeral on serverless
+  hosting. Apply edge-level rate limiting before opening public access.
 - `app/globals.css` contains Tailwind CSS and global theme styles.
 - `public/` is reserved for static assets that are served from the site root.

@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:sse": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/sse-parser.test.mjs",
+    "test:step11": "node --import=./tests/helpers/server-only-loader.mjs --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/step11-*.test.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:promote-admin": "node scripts/promote-admin.mjs"

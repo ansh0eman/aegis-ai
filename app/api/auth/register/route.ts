@@ -7,10 +7,23 @@ import {
   normalizeEmail,
 } from "@/lib/auth-validation";
 import { hashPassword } from "@/lib/password";
+import {
+  isPublicRegistrationOpen,
+  isSameOriginMutation,
+  sameOriginErrorResponse,
+} from "@/lib/request-security";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  if (!isSameOriginMutation(request)) return sameOriginErrorResponse();
+  if (!isPublicRegistrationOpen()) {
+    return Response.json(
+      { error: "Public registration is closed." },
+      { status: 403, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();

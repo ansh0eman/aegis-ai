@@ -1,42 +1,11 @@
 import "server-only";
 
 import { desc, eq } from "drizzle-orm";
-import type { ExtractTablesWithRelations } from "drizzle-orm";
-import type { BetterSQLiteTransaction } from "drizzle-orm/better-sqlite3";
 import { alias } from "drizzle-orm/sqlite-core";
 import { db } from "@/db";
-import * as schema from "@/db/schema";
-import {
-  auditLogs,
-  users,
-  type AuditAction,
-  type AuditMetadata,
-} from "@/db/schema";
+import { auditLogs, users } from "@/db/schema";
 
-type AuditTransaction = BetterSQLiteTransaction<
-  typeof schema,
-  ExtractTablesWithRelations<typeof schema>
->;
-
-export function writeAuditLog(
-  transaction: AuditTransaction,
-  event: {
-    actorUserId: number;
-    action: AuditAction;
-    targetUserId?: number | null;
-    metadata?: AuditMetadata | null;
-  },
-) {
-  transaction
-    .insert(auditLogs)
-    .values({
-      actorUserId: event.actorUserId,
-      targetUserId: event.targetUserId ?? null,
-      action: event.action,
-      metadata: event.metadata ?? null,
-    })
-    .run();
-}
+export { writeAuditLog } from "./audit-write";
 
 export function getRecentAuditLogs() {
   const actor = alias(users, "audit_actor");

@@ -1,14 +1,18 @@
 import { asc, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { users, type UserRole, type UserStatus } from "@/db/schema";
+import { users } from "@/db/schema";
 import { accessErrorResponse, requireAdmin } from "@/lib/authorization";
 import {
   isValidEmail,
   isValidPassword,
   normalizeEmail,
 } from "@/lib/auth-validation";
-import { writeAuditLog } from "@/lib/audit";
 import { hashPassword } from "@/lib/password";
+import {
+  findDuplicateProvisioningEmails,
+  provisionUsersWithAudit,
+} from "@/lib/admin-user-transactions";
+import { isSameOriginMutation, sameOriginErrorResponse } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 const MAX_BATCH_SIZE = 50;
@@ -41,6 +45,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!isSameOriginMutation(request)) return sameOriginErrorResponse();
   const access = await requireAdmin();
   if (!access.ok) return accessErrorResponse(access);
 
@@ -108,17 +113,12 @@ export async function POST(request: Request) {
     requestedUsers.push({ email, password: value.password });
   }
 
-  const failures = new Map<number, string>();
-  const firstIndexByEmail = new Map<string, number>();
-  const candidates: Array<{ index: number; user: ProvisionedUser }> = [];
-  requestedUsers.forEach((user, index) => {
-    if (firstIndexByEmail.has(user.email)) {
-      failures.set(index, "duplicate_in_request");
-      return;
-    }
-    firstIndexByEmail.set(user.email, index);
-    candidates.push({ index, user });
-  });
+  const { candidates: uniqueCandidates, failures } =
+    findDuplicateProvisioningEmails(requestedUsers);
+  const candidates = uniqueCandidates.map(({ index }) => ({
+    index,
+    user: requestedUsers[index],
+  }));
 
   try {
     const alreadyExisting = new Set(
@@ -154,50 +154,12 @@ export async function POST(request: Request) {
       }
     }
 
-    const created = new Map<
-      number,
-      {
-        id: number;
-        email: string;
-        role: UserRole;
-        status: UserStatus;
-        createdAt: Date;
-      }
-    >();
-
-    db.transaction((transaction) => {
-      for (const user of hashedUsers) {
-        const [inserted] = transaction
-          .insert(users)
-          .values({
-            email: user.email,
-            passwordHash: user.passwordHash,
-            role: "member",
-            status: "active",
-          })
-          .onConflictDoNothing({ target: users.email })
-          .returning({
-            id: users.id,
-            email: users.email,
-            role: users.role,
-            status: users.status,
-            createdAt: users.createdAt,
-          })
-          .all();
-
-        if (inserted) {
-          created.set(user.index, inserted);
-          writeAuditLog(transaction, {
-            actorUserId: access.user.id,
-            action: "user.provisioned",
-            targetUserId: inserted.id,
-            metadata: { email: inserted.email },
-          });
-        } else {
-          failures.set(user.index, "already_exists");
-        }
-      }
-    });
+    const { created, failures: transactionFailures } = provisionUsersWithAudit(
+      db,
+      access.user.id,
+      hashedUsers,
+    );
+    for (const [index, reason] of transactionFailures) failures.set(index, reason);
 
     const results = requestedUsers.map((user, index) => ({
       email: user.email,

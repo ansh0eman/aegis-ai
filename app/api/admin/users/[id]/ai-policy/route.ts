@@ -9,6 +9,7 @@ import {
 } from "@/lib/ai-policy";
 import { accessErrorResponse, requireAdmin } from "@/lib/authorization";
 import { writeAuditLog } from "@/lib/audit";
+import { isSameOriginMutation, sameOriginErrorResponse } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 
@@ -61,6 +62,7 @@ export async function GET(_request: Request, context: RouteContext) {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
+  if (!isSameOriginMutation(request)) return sameOriginErrorResponse();
   const access = await requireAdmin();
   if (!access.ok) return accessErrorResponse(access);
 

@@ -1,9 +1,8 @@
-import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { users } from "@/db/schema";
 import type { UserStatus } from "@/db/schema";
 import { accessErrorResponse, requireAdmin } from "@/lib/authorization";
-import { writeAuditLog } from "@/lib/audit";
+import { updateUserStatusWithAudit } from "@/lib/admin-user-transactions";
+import { isSameOriginMutation, sameOriginErrorResponse } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 
@@ -12,6 +11,7 @@ type RouteContext = {
 };
 
 export async function PATCH(request: Request, context: RouteContext) {
+  if (!isSameOriginMutation(request)) return sameOriginErrorResponse();
   const access = await requireAdmin();
   if (!access.ok) return accessErrorResponse(access);
 
@@ -40,59 +40,24 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
   const requestedStatus = body.status as UserStatus;
 
-  if (userId === access.user.id && requestedStatus === "disabled") {
-    return Response.json(
-      { error: "You cannot disable your own account." },
-      { status: 409 },
-    );
-  }
-
   try {
-    const user = db.transaction((transaction) => {
-      const [currentUser] = transaction
-        .select({ status: users.status })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1)
-        .all();
+    const result = updateUserStatusWithAudit(
+      db,
+      access.user.id,
+      userId,
+      requestedStatus,
+    );
 
-      if (!currentUser) return null;
-
-      const [updatedUser] = transaction
-        .update(users)
-        .set({ status: requestedStatus })
-        .where(eq(users.id, userId))
-        .returning({
-          id: users.id,
-          email: users.email,
-          role: users.role,
-          status: users.status,
-          createdAt: users.createdAt,
-        })
-        .all();
-
-      if (updatedUser && currentUser.status !== updatedUser.status) {
-        writeAuditLog(transaction, {
-          actorUserId: access.user.id,
-          action:
-            updatedUser.status === "disabled"
-              ? "user.disabled"
-              : "user.enabled",
-          targetUserId: updatedUser.id,
-          metadata: {
-            from: currentUser.status,
-            to: updatedUser.status,
-          },
-        });
-      }
-
-      return updatedUser ?? null;
-    });
-
-    if (!user) {
+    if (result.kind === "self_disable") {
+      return Response.json(
+        { error: "You cannot disable your own account." },
+        { status: 409 },
+      );
+    }
+    if (result.kind === "not_found") {
       return Response.json({ error: "User not found." }, { status: 404 });
     }
-    return Response.json({ user }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ user: result.user }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return Response.json({ error: "User status could not be updated." }, { status: 500 });
   }

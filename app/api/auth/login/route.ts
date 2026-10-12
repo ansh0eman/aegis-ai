@@ -4,10 +4,13 @@ import { users } from "@/db/schema";
 import { createSession } from "@/lib/auth";
 import { normalizeEmail } from "@/lib/auth-validation";
 import { verifyPassword } from "@/lib/password";
+import { isSameOriginMutation, sameOriginErrorResponse } from "@/lib/request-security";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  if (!isSameOriginMutation(request)) return sameOriginErrorResponse();
+
   let body: unknown;
   try {
     body = await request.json();
