@@ -9,6 +9,12 @@ import { users, type UserRole, type UserStatus } from "@/db/schema";
 const COOKIE_NAME = "aegis_session";
 const SESSION_SECONDS = 60 * 60 * 24 * 7;
 
+function isSecureCookie() {
+  if (process.env.AUTH_COOKIE_SECURE === "true") return true;
+  if (process.env.AUTH_COOKIE_SECURE === "false") return false;
+  return process.env.NODE_ENV === "production";
+}
+
 export type CurrentUser = {
   id: number;
   email: string;
@@ -36,7 +42,7 @@ export async function createSession(userId: number) {
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: isSecureCookie(),
     path: "/",
     maxAge: SESSION_SECONDS,
   });

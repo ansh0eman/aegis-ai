@@ -1,0 +1,38 @@
+services:
+  aegis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      AEGIS_DATABASE_PATH: /data/aegis.db
+      AEGIS_ALLOW_PUBLIC_REGISTRATION: "false"
+      # Local HTTP only. Production deployments default to Secure cookies.
+      AUTH_COOKIE_SECURE: "false"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Load OPENAI_API_KEY from .env.local}
+      AUTH_SECRET: ${AUTH_SECRET:?Load AUTH_SECRET from .env.local}
+    volumes:
+      - aegis_data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  aegis_data:

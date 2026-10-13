@@ -73,6 +73,81 @@ can reload messages after a refresh. For isolated local testing, both the app an
 Drizzle CLI accept the server-side `AEGIS_DATABASE_PATH` environment variable;
 otherwise they use `./aegis.db`.
 
+## Run with Docker
+
+Docker packages the app and its production runtime into an image. A container
+is one running instance of that image. The image is built in stages: Node
+dependencies (including native SQLite/password modules) are installed and the
+Next.js standalone server is built, then only the runtime files are copied into
+the final image. The runtime uses the Node 24 LTS Debian slim image and runs as
+the unprivileged `node` user.
+
+Docker Compose defines the local app service and a named volume for SQLite.
+The database lives at `/data/aegis.db` inside the container; `aegis_data` keeps
+it outside the replaceable container and image. The host's `aegis.db` is neither
+copied into the image nor mounted into the container. The app applies already
+generated Drizzle migrations on startup, before starting Next.js; it never
+generates migrations at runtime. Run one app container at a time because this
+simple setup is intended for a single instance, not multi-replica deployment.
+
+The Compose configuration requires `OPENAI_API_KEY` and `AUTH_SECRET` from
+`.env.local`. Compose passes them to the running server; the Dockerfile does
+not bake them into an image. Keep the Docker daemon and access to it trusted,
+since runtime environment variables can be inspected by Docker administrators.
+Local Compose binds the app only to `127.0.0.1:3000`, closes public registration,
+and disables Secure cookies only for local plain-HTTP testing. Use HTTPS and
+Secure cookies for a public deployment.
+
+From the repository root, validate the Compose file without printing resolved
+environment values, then build and start the app:
+
+```bash
+docker compose --env-file .env.local config --quiet
+docker compose --env-file .env.local up --build -d
+docker compose --env-file .env.local ps
+docker compose --env-file .env.local logs --tail=100 aegis
+```
+
+Open [http://localhost:3000](http://localhost:3000). The service health check
+requests the home page. On startup, migration logs should report that the
+database is up to date. To stop the container while retaining data, use
+`docker compose --env-file .env.local down` (do not add `-v` if you want to
+keep the database). Starting it again with
+`docker compose --env-file .env.local up -d` reuses the same named volume.
+
+To confirm the migration history survives replacing the container, compare the
+count before and after a recreate:
+
+```bash
+docker compose --env-file .env.local exec -T aegis node -e "const D=require('better-sqlite3');const d=new D('/data/aegis.db',{readonly:true});console.log(d.prepare('select count(*) as migrations from __drizzle_migrations').get().migrations);d.close()"
+docker compose --env-file .env.local up --force-recreate -d aegis
+docker compose --env-file .env.local exec -T aegis node -e "const D=require('better-sqlite3');const d=new D('/data/aegis.db',{readonly:true});console.log(d.prepare('select count(*) as migrations from __drizzle_migrations').get().migrations);d.close()"
+```
+
+For a consistent SQLite backup, use SQLite's backup API from the running
+container, then copy that completed backup to the ignored local `backups/`
+directory:
+
+```bash
+mkdir -p backups
+container_id=$(docker compose --env-file .env.local ps -q aegis)
+docker exec "$container_id" node -e "const D=require('better-sqlite3');new D('/data/aegis.db',{readonly:true}).backup('/tmp/aegis-backup.db').then(()=>console.log('Backup ready'))"
+docker cp "$container_id:/tmp/aegis-backup.db" backups/aegis-container-backup.db
+```
+
+The backup is a separate file; protect it like production data. Test restores
+against a separate disposable database, never by overwriting the live volume.
+Keep backups outside Git and make sure your hosting provider also protects and
+backs up its persistent storage.
+
+For another CPU architecture, build on that architecture or use Buildx, for
+example `docker buildx build --platform linux/amd64 -t aegis-ai:local .`. The
+container still expects one persistent writable volume at `/data`. Before
+upgrading, back up the database, then build and recreate the app. Migrations
+run before the server starts; when moving to multiple replicas, use a separate
+single-run migration job and deployment coordination instead of letting every
+replica migrate concurrently.
+
 ## Project structure
 
 - `app/layout.tsx` defines the shared HTML shell and site metadata.
