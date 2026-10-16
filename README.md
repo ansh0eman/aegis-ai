@@ -16,6 +16,15 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in a browser.
 
+## Public interactive demo
+
+Visit `/demo` without signing in to try scripted chat playback and synthetic
+user, policy, and audit interactions. Its sample data lives only in browser
+state and resets when the page reloads. The demo makes no OpenAI requests,
+does not consume API credits, and does not read or write the application
+database. The authenticated `/chat` and `/admin` pages remain separate and
+continue to use the real server APIs and access controls.
+
 ## OpenAI API key
 
 Add your key to `.env.local` in the project root:

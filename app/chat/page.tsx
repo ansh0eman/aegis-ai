@@ -5,5 +5,5 @@ import ChatClient from "./chat-client";
 export default async function ChatPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  return <ChatClient email={user.email} />;
+  return <ChatClient email={user.email} isAdmin={user.role === "admin"} />;
 }

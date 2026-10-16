@@ -9,11 +9,12 @@ export default async function AdminAuditPage() {
 
   if (!access.ok) {
     return (
-      <main className="mx-auto max-w-4xl px-6 py-12">
-        <h1 className="text-2xl font-semibold text-slate-950">Forbidden</h1>
-        <p className="mt-2 text-sm text-slate-600">
+      <main className="container app-main">
+        <h1 className="text-2xl font-semibold">Access denied</h1>
+        <p className="mt-2 text-sm muted">
           Your account does not have permission to view this page.
         </p>
+        <Link href="/chat" className="text-link mt-5 inline-block text-sm">Return to workspace</Link>
       </main>
     );
   }
@@ -21,61 +22,47 @@ export default async function AdminAuditPage() {
   const events = getRecentAuditLogs();
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-12">
-      <header className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-950">Audit log</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Recent account provisioning and status changes.
-          </p>
-        </div>
-        <Link
-          href="/admin"
-          className="text-sm font-semibold text-blue-700 hover:text-blue-900"
-        >
-          Back to users
-        </Link>
-      </header>
-
-      <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-slate-600">
+    <>
+      <header className="site-header"><div className="container nav-row"><Link href="/" className="brand"><span className="brand-mark" aria-hidden="true">A</span><span>Aegis AI</span></Link><nav aria-label="Admin navigation" className="nav-links"><Link href="/chat">Workspace</Link><Link href="/admin">Users</Link></nav></div></header>
+      <main className="container app-main">
+        <div className="page-heading"><div><span className="badge badge-accent">Admin console</span><h1 className="mt-4">Audit log</h1><p>Recent account provisioning and status changes.</p></div><Link href="/admin" className="button button-secondary">Back to users</Link></div>
+        <div className="table-wrap">
+        <table className="data-table min-w-[680px]">
+          <thead>
             <tr>
-              <th className="px-4 py-3 font-semibold">Time</th>
-              <th className="px-4 py-3 font-semibold">Actor</th>
-              <th className="px-4 py-3 font-semibold">Action</th>
-              <th className="px-4 py-3 font-semibold">Target</th>
+              <th scope="col">Time</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Target</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody>
             {events.map((event) => (
               <tr key={event.id}>
-                <td className="px-4 py-3">
+                <td>
                   <time dateTime={event.createdAt.toISOString()}>
                     {event.createdAt.toLocaleString()}
                   </time>
                 </td>
-                <td className="px-4 py-3">
+                <td>
                   {event.actor.email} (#{event.actor.id})
                 </td>
-                <td className="px-4 py-3 font-mono text-xs">{event.action}</td>
-                <td className="px-4 py-3">
+                <td className="font-mono text-xs text-[var(--accent)]">{event.action}</td>
+                <td>
                   {event.target
                     ? `${event.target.email} (#${event.target.id})`
-                    : "—"}
+                    : "None"}
                 </td>
               </tr>
             ))}
             {events.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-slate-500">
+                <td colSpan={4} className="text-center muted">
                   No audit events yet.
                 </td>
               </tr>
             ) : null}
           </tbody>
         </table>
-      </div>
-    </main>
+        </div>
+      </main>
+    </>
   );
 }

@@ -1,31 +1,58 @@
+import Image from "next/image";
 import Link from "next/link";
+import SiteHeader from "@/app/ui/site-header";
+
+const features = [
+  { title: "SSE streaming and cancellation", body: "Server-sent events deliver response chunks; Stop aborts generation and keeps incomplete text unsaved." },
+  { title: "JWT sessions and RBAC", body: "HttpOnly JWT cookies identify users; server-side role checks protect admin routes and APIs." },
+  { title: "Conversations that persist", body: "SQLite and Drizzle store owned conversations; transactions protect account changes." },
+  { title: "Usage with guardrails", body: "Per-user AI policies set prompt and daily request limits before a model call." },
+  { title: "An accountable admin trail", body: "Provisioning and status changes write append-only audit events with their business mutations." },
+];
 
 export default function Home() {
   return (
-    <main className="flex min-h-dvh items-center justify-center px-6 py-16">
-      <section className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white px-8 py-12 shadow-sm sm:px-12 sm:py-16">
-        <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">
-          Development
-        </span>
+    <>
+      <SiteHeader page="home" />
+      <main>
+        <section className="container hero" aria-labelledby="home-title">
+          <div>
+            <p className="eyebrow">Enterprise AI workspace</p>
+            <h1 id="home-title" className="mt-5">Enterprise AI, under control.</h1>
+            <p className="hero-copy">A reference application for streaming conversations, governed access, and the operational details behind enterprise AI.</p>
+            <div className="hero-actions">
+              <Link href="/demo" className="button button-primary">Explore Interactive Demo</Link>
+              <a href="https://github.com/ansh0eman/aegis-ai" target="_blank" rel="noopener noreferrer" className="button button-secondary">View Source on GitHub</a>
+            </div>
+          </div>
+          <div className="hero-preview">
+            <Image src="/hero-infrastructure.jpg" alt="Abstract close-up of charcoal metal panels with a restrained blue edge light" width={1536} height={1024} priority sizes="(max-width: 800px) 100vw, 54vw" />
+          </div>
+        </section>
 
-        <h1 className="mt-6 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-          Aegis AI
-        </h1>
-        <p className="mt-4 text-lg leading-8 text-slate-600">
-          Enterprise AI Workspace
-        </p>
+        <section className="section-block" aria-label="Public demo notice">
+          <div className="container flex flex-wrap items-center justify-between gap-4">
+            <p className="max-w-2xl text-base leading-7">The public demo uses scripted messages and synthetic account data. It does not use a live AI model or your private workspace.</p>
+            <span className="badge badge-accent">Simulated demo</span>
+          </div>
+        </section>
 
-        <Link
-          href="/chat"
-          className="mt-10 inline-flex h-11 items-center justify-center rounded-lg bg-slate-900 px-5 text-sm font-semibold text-white transition-colors hover:bg-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
-        >
-          Open Workspace
-        </Link>
-        <div className="mt-6 flex gap-5 text-sm font-medium text-slate-600">
-          <Link href="/login" className="hover:text-slate-950">Log in</Link>
-          <Link href="/register" className="hover:text-slate-950">Create account</Link>
+        <section className="container section-block" aria-labelledby="architecture-title">
+          <h2 id="architecture-title" className="max-w-2xl text-3xl font-semibold tracking-tight sm:text-4xl">Built to show the decisions behind the interface.</h2>
+          <div className="feature-grid">
+            {features.map((feature) => (
+              <article key={feature.title} className="feature-item">
+                <div><h3>{feature.title}</h3><p>{feature.body}</p></div>
+              </article>
+            ))}
+          </div>
+        </section>
+      </main>
+      <footer className="border-t border-[var(--line)] py-7">
+        <div className="container text-sm muted">
+          <span>Aegis AI. An engineering portfolio project.</span>
         </div>
-      </section>
-    </main>
+      </footer>
+    </>
   );
 }

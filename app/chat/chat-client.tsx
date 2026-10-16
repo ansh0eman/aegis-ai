@@ -24,7 +24,7 @@ type ActiveRequest = {
   reader?: ReadableStreamDefaultReader<Uint8Array>;
 };
 
-export default function ChatClient({ email }: { email: string }) {
+export default function ChatClient({ email, isAdmin }: { email: string; isAdmin: boolean }) {
   const router = useRouter();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -305,106 +305,47 @@ export default function ChatClient({ email }: { email: string }) {
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col px-6 py-10">
-      <header className="mb-8 flex items-center justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-blue-700">Aegis AI</p>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-950">
-            Workspace
-          </h1>
-          <p className="text-sm text-slate-500">Signed in as {email}</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <Link
-            href="/"
-            className="text-sm font-medium text-slate-600 hover:text-slate-950"
-          >
-            Back home
-          </Link>
-          <button
-            onClick={handleLogout}
-            className="text-sm font-semibold text-slate-600 hover:text-slate-950"
-          >
-            Log out
-          </button>
+    <>
+      <header className="site-header">
+        <div className="container nav-row">
+          <Link href="/" className="brand" aria-label="Aegis AI home"><span className="brand-mark" aria-hidden="true">A</span><span>Aegis AI</span></Link>
+          <nav aria-label="Workspace navigation" className="nav-links">
+            {isAdmin ? <Link href="/admin">Admin</Link> : null}
+            <button type="button" onClick={handleLogout} className="hover:text-[var(--foreground)]">Log out</button>
+          </nav>
         </div>
       </header>
-      <section
-        aria-label="Conversation"
-        aria-live="polite"
-        className="min-h-72 flex-1 space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
-      >
-        {messages.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            Send a message to see the browser-to-server request flow.
-          </p>
-        ) : (
-          messages.map((message, index) => (
-            <div
-              key={`${message.role}-${index}`}
-              className={
-                message.role === "user"
-                  ? "ml-auto max-w-[85%] rounded-lg bg-slate-900 px-4 py-3 text-sm text-white"
-                  : "mr-auto max-w-[85%] rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-800"
-              }
-            >
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-70">
-                {message.role === "user" ? "You" : "Aegis AI"}
-              </span>
-              {message.content}
-              {message.status ? (
-                <span className="mt-2 block text-xs font-medium text-amber-800">
-                  {message.status === "interrupted"
-                    ? "Interrupted — this partial reply was not saved."
-                    : "Incomplete — this partial reply was not saved."}
-                </span>
-              ) : null}
+      <main className="container app-main max-w-[980px]">
+        <div className="page-heading">
+          <div><span className="badge badge-accent">Private workspace</span><h1 className="mt-4">Conversation</h1><p>Signed in as {email}</p></div>
+          <Link href="/demo" className="text-link text-sm">View public demo</Link>
+        </div>
+        <section aria-label="Conversation" aria-live="polite" className="panel chat-thread">
+          {messages.length === 0 ? (
+            <div className="empty-state"><div><h2>Start a conversation</h2><p>Ask a question to begin. Replies stream as they arrive, and completed messages are saved to this conversation.</p></div></div>
+          ) : (
+            <div className="message-list">
+              {messages.map((message, index) => (
+                <div key={`${message.role}-${index}`} className={`message ${message.role === "user" ? "message-user" : "message-assistant"}`}>
+                  <span className="message-label">{message.role === "user" ? "You" : "Aegis AI"}</span>
+                  {message.content || (isLoading && index === messages.length - 1 ? "Waiting for response..." : "")}
+                  {message.status ? <span className="mt-2 block text-xs error-text">{message.status === "interrupted" ? "Interrupted. This partial reply was not saved." : "Incomplete. This partial reply was not saved."}</span> : null}
+                </div>
+              ))}
+              {isLoading ? <p role="status" className="text-xs muted">Generating response...</p> : null}
             </div>
-          ))
-        )}
-        {isLoading ? (
-          <p className="text-sm text-slate-500">Generating response…</p>
-        ) : null}
-      </section>
-      {error ? (
-        <p role="alert" className="mt-4 text-sm font-medium text-red-700">
-          {error}
-        </p>
-      ) : null}
-      <form onSubmit={handleSubmit} className="mt-4 flex gap-3">
-        <label htmlFor="message" className="sr-only">
-          Message
-        </label>
-        <input
-          id="message"
-          name="message"
-          type="text"
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          placeholder="Type a message"
-          required
-          autoComplete="off"
-          disabled={isLoading}
-          className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
-        />
-        {isLoading ? (
-          <button
-            type="button"
-            onClick={stopGenerating}
-            className="rounded-lg bg-slate-700 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-900"
-          >
-            Stop Generating
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!input.trim()}
-            className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Send
-          </button>
-        )}
-      </form>
-    </main>
+          )}
+        </section>
+        {error ? <p role="alert" className="status-message error mt-4">{error}</p> : null}
+        <form onSubmit={handleSubmit} className="mt-5">
+          <label htmlFor="message" className="field-label">Message</label>
+          <div className="composer">
+            <input id="message" name="message" type="text" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Ask Aegis AI a question" required autoComplete="off" disabled={isLoading} className="input" />
+            {isLoading ? <button type="button" onClick={stopGenerating} className="button button-secondary">Stop generating</button> : <button type="submit" disabled={!input.trim()} className="button button-primary">Send message</button>}
+          </div>
+          <p className="field-help">Only completed assistant replies are saved.</p>
+        </form>
+      </main>
+    </>
   );
 }
