@@ -13,6 +13,7 @@ import {
   provisionUsersWithAudit,
 } from "@/lib/admin-user-transactions";
 import { isSameOriginMutation, sameOriginErrorResponse } from "@/lib/request-security";
+import { getPublicDemoConfig, isPublicDemoEnvironment } from "@/lib/public-demo";
 
 export const runtime = "nodejs";
 const MAX_BATCH_SIZE = 50;
@@ -26,6 +27,11 @@ export async function GET() {
   const access = await requireAdmin();
   if (!access.ok) return accessErrorResponse(access);
 
+  const demoConfig = getPublicDemoConfig();
+  if (isPublicDemoEnvironment() && !demoConfig) {
+    return Response.json({ error: "Public demo administration is misconfigured." }, { status: 503 });
+  }
+
   const safeUsers = db
     .select({
       id: users.id,
@@ -35,6 +41,7 @@ export async function GET() {
       createdAt: users.createdAt,
     })
     .from(users)
+    .where(demoConfig ? inArray(users.email, demoConfig.emails) : undefined)
     .orderBy(asc(users.id))
     .all();
 
@@ -48,6 +55,12 @@ export async function POST(request: Request) {
   if (!isSameOriginMutation(request)) return sameOriginErrorResponse();
   const access = await requireAdmin();
   if (!access.ok) return accessErrorResponse(access);
+  if (isPublicDemoEnvironment()) {
+    return Response.json(
+      { error: "Shared demo administrators cannot provision additional accounts." },
+      { status: 403 },
+    );
+  }
 
   let body: unknown;
   try {

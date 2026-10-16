@@ -1,10 +1,12 @@
 import { eq } from "drizzle-orm";
-import { db } from "@/db";
 import { users } from "@/db/schema";
 import { createSession } from "@/lib/auth";
 import { normalizeEmail } from "@/lib/auth-validation";
 import { verifyPassword } from "@/lib/password";
 import { isSameOriginMutation, sameOriginErrorResponse } from "@/lib/request-security";
+import { getPublicDemoConfig, isPublicDemoEnvironment, isPublicDemoSessionSecure } from "@/lib/public-demo";
+import { admitPublicDemoLogin } from "@/lib/public-demo-login-limit";
+import { db } from "@/db";
 
 export const runtime = "nodejs";
 
@@ -28,6 +30,29 @@ export async function POST(request: Request) {
   }
 
   const email = normalizeEmail(body.email);
+  if (isPublicDemoEnvironment()) {
+    if (!isPublicDemoSessionSecure()) {
+      return Response.json({ error: "Secure sign-in is not configured for this demo." }, { status: 503 });
+    }
+    const demoConfig = getPublicDemoConfig();
+    if (!demoConfig) {
+      return Response.json({ error: "The public demo is not configured." }, { status: 503 });
+    }
+    if (!demoConfig.emails.includes(email)) {
+      return Response.json({ error: "Invalid email or password." }, { status: 401 });
+    }
+    try {
+      const admission = admitPublicDemoLogin(db, email, request.headers);
+      if (admission === "limited") {
+        return Response.json({ error: "Too many login attempts. Please wait before trying again." }, { status: 429 });
+      }
+      if (admission === "unavailable") {
+        return Response.json({ error: "Login protection is not configured." }, { status: 503 });
+      }
+    } catch {
+      return Response.json({ error: "Login protection is temporarily unavailable." }, { status: 503 });
+    }
+  }
   try {
     const [user] = db.select().from(users).where(eq(users.email, email)).limit(1).all();
     if (!user || !(await verifyPassword(user.passwordHash, body.password))) {

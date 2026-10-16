@@ -5,7 +5,15 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import SiteHeader from "@/app/ui/site-header";
 
-export default function AuthForm({ mode }: { mode: "login" | "register" }) {
+export default function AuthForm({
+  mode,
+  publicDemoCredentials = null,
+  isSharedPublicDemo = false,
+}: {
+  mode: "login" | "register";
+  publicDemoCredentials?: Array<{ email: string; password: string }> | null;
+  isSharedPublicDemo?: boolean;
+}) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -45,6 +53,24 @@ export default function AuthForm({ mode }: { mode: "login" | "register" }) {
           <h1 className="mt-5 text-4xl font-semibold tracking-tight sm:text-5xl">{isRegister ? "Create your workspace account." : "Welcome back to Aegis."}</h1>
           <p className="mt-5 text-base leading-7 muted">{isRegister ? "Create an account to use the authenticated chat workspace. Public registration may be closed in production." : "Sign in to continue your conversations and access the controls available to your role."}</p>
           <Link href="/demo" className="text-link mt-7 inline-block text-sm">Explore the public simulation</Link>
+          {isSharedPublicDemo ? (
+            <p className="status-message warning mt-6">Shared demonstration environment. Other visitors may view messages saved in these accounts. Do not enter personal, confidential, or sensitive information.</p>
+          ) : null}
+          {publicDemoCredentials ? (
+            <details className="panel mt-5 p-4">
+              <summary className="cursor-pointer font-medium">Reveal shared demo credentials</summary>
+              <p className="mt-2 text-xs muted">These credentials are public and use a shared test database. Anyone can sign in as these roles.</p>
+              <ul className="mt-3 grid gap-3 text-sm">
+                {publicDemoCredentials.map((credential, index) => (
+                  <li key={credential.email}>
+                    <strong>{["demo-admin", "demo-user1", "demo-user2"][index]}</strong>
+                    <div className="mt-1 font-mono text-xs">{credential.email}</div>
+                    <div className="mt-1 font-mono text-xs">{credential.password}</div>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
         </div>
         <section className="panel w-full p-6 sm:p-8" aria-label={isRegister ? "Create account" : "Sign in"}>
           <h2 className="text-xl font-semibold tracking-tight">{isRegister ? "Create account" : "Sign in"}</h2>

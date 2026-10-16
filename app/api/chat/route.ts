@@ -7,6 +7,8 @@ import { getEffectiveAiPolicy } from "@/lib/ai-policy";
 import { encodeSseEvent } from "@/lib/sse";
 import { getCurrentUser } from "@/lib/auth";
 import { isSameOriginMutation, sameOriginErrorResponse } from "@/lib/request-security";
+import { getPublicDemoConfig, isPublicDemoEnvironment, isPublicDemoOpenAiEnabled, publicDemoDailyLimit, publicDemoOutputTokenLimit, publicDemoPromptLimit, publicDemoTimeoutMs } from "@/lib/public-demo";
+import { tryAcquireDemoInferenceSlot } from "@/lib/demo-inference";
 
 export const runtime = "nodejs";
 
@@ -35,6 +37,12 @@ function policyResponse(result: ChatAdmissionResult) {
       { status: 429 },
     );
   }
+  if (result.kind === "public_daily_limit") {
+    return Response.json(
+      { error: "The shared demo has reached its daily AI request limit. Please try again tomorrow." },
+      { status: 429 },
+    );
+  }
   if (result.kind === "not_found") {
     return Response.json({ error: "Conversation not found." }, { status: 404 });
   }
@@ -56,6 +64,19 @@ export async function POST(request: Request) {
       { error: "Please log in to use the workspace." },
       { status: 401 },
     );
+  }
+
+  const demoConfig = getPublicDemoConfig();
+  const publicDemoEnvironment = isPublicDemoEnvironment();
+  if (publicDemoEnvironment && !demoConfig) {
+    return Response.json({ error: "The public demo is not configured." }, { status: 503 });
+  }
+  const isPublicDemoAccount = Boolean(demoConfig?.emails.includes(user.email));
+  if (publicDemoEnvironment && !isPublicDemoAccount) {
+    return Response.json({ error: "This account is not enabled for the public demo." }, { status: 403 });
+  }
+  if (isPublicDemoAccount && !isPublicDemoOpenAiEnabled()) {
+    return Response.json({ error: "Live AI is not enabled for the shared demo." }, { status: 503 });
   }
 
   let body: unknown;
@@ -109,14 +130,21 @@ export async function POST(request: Request) {
       { status: 403 },
     );
   }
-  if (message.length > initialPolicy.maxPromptChars) {
+  const maxPromptChars = isPublicDemoAccount
+    ? Math.min(initialPolicy.maxPromptChars, publicDemoPromptLimit())
+    : initialPolicy.maxPromptChars;
+  if (message.length > maxPromptChars) {
     return Response.json(
-      { error: `Message must be ${initialPolicy.maxPromptChars} characters or fewer.` },
+      { error: `Message must be ${maxPromptChars} characters or fewer.` },
       { status: 400 },
     );
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
+  const releaseDemoInferenceSlot = isPublicDemoAccount ? tryAcquireDemoInferenceSlot() : null;
+  if (isPublicDemoAccount && !releaseDemoInferenceSlot) {
+    return Response.json({ error: "The shared demo is busy. Please try again shortly." }, { status: 429 });
+  }
   let admission: ChatAdmissionResult;
   try {
     admission = admitChatRequest(db, {
@@ -124,8 +152,10 @@ export async function POST(request: Request) {
       message,
       conversationId,
       serviceConfigured: Boolean(apiKey),
+      publicDailyLimit: isPublicDemoAccount ? publicDemoDailyLimit() : undefined,
     });
   } catch {
+    releaseDemoInferenceSlot?.();
     return Response.json(
       { error: "The request could not be prepared." },
       { status: 500 },
@@ -133,17 +163,25 @@ export async function POST(request: Request) {
   }
 
   const rejection = policyResponse(admission);
-  if (rejection) return rejection;
+  if (rejection) {
+    releaseDemoInferenceSlot?.();
+    return rejection;
+  }
   if (admission.kind !== "accepted") {
+    releaseDemoInferenceSlot?.();
     return Response.json({ error: "The request could not be prepared." }, { status: 500 });
   }
 
-  if (!apiKey) return Response.json({ error: "The AI service is not configured on the server." }, { status: 500 });
+  if (!apiKey) {
+    releaseDemoInferenceSlot?.();
+    return Response.json({ error: "The AI service is not configured on the server." }, { status: 500 });
+  }
 
   const activeConversationId = admission.conversationId;
 
   const upstreamAbortController = new AbortController();
   let clientCancelled = false;
+  let timedOut = false;
   type AbortableProviderStream = AsyncIterable<{
     type: string;
     delta?: unknown;
@@ -164,8 +202,16 @@ export async function POST(request: Request) {
   if (request.signal.aborted) {
     cancelUpstream();
     removeRequestAbortListener();
+    releaseDemoInferenceSlot?.();
     return new Response(null, { status: 204 });
   }
+
+  const publicDemoTimeout = isPublicDemoAccount
+    ? setTimeout(() => {
+        timedOut = true;
+        upstreamAbortController.abort();
+      }, publicDemoTimeoutMs())
+    : null;
 
   const encoder = new TextEncoder();
   const responseStream = new ReadableStream<Uint8Array>({
@@ -189,6 +235,9 @@ export async function POST(request: Request) {
               model: "gpt-6-luna",
               input: [...admission.history, { role: "user", content: message }],
               stream: true,
+              ...(isPublicDemoAccount
+                ? { max_output_tokens: publicDemoOutputTokenLimit() }
+                : {}),
             },
             { signal: upstreamAbortController.signal },
           )) as AbortableProviderStream;
@@ -211,14 +260,21 @@ export async function POST(request: Request) {
           )) {
             if (!send(event)) return;
           }
+          if (timedOut && !clientCancelled) {
+            send({ event: "error", data: { message: "The shared demo request timed out. Please try again." } });
+          }
         } catch {
           send({
             event: "error",
             data: {
-              message: "The AI service is unavailable. Please try again.",
+              message: timedOut
+                ? "The shared demo request timed out. Please try again."
+                : "The AI service is unavailable. Please try again.",
             },
           });
         } finally {
+          if (publicDemoTimeout) clearTimeout(publicDemoTimeout);
+          releaseDemoInferenceSlot?.();
           removeRequestAbortListener();
           try {
             controller.close();

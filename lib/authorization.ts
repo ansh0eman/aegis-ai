@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getCurrentUser, type CurrentUser } from "@/lib/auth";
+import { isPublicDemoAdmin } from "@/lib/public-demo";
 
 export type AccessResult =
   | { ok: true; user: CurrentUser }
@@ -14,7 +15,7 @@ export async function requireUser(): Promise<AccessResult> {
 export async function requireAdmin(): Promise<AccessResult> {
   const result = await requireUser();
   if (!result.ok) return result;
-  return result.user.role === "admin"
+  return isPublicDemoAdmin(result.user)
     ? result
     : { ok: false, reason: "forbidden" };
 }

@@ -20,9 +20,11 @@ type ProvisionResult = {
 export default function AdminUsersClient({
   users: initialUsers,
   currentUserId,
+  restrictProvisioning = false,
 }: {
   users: AdminUser[];
   currentUserId: number;
+  restrictProvisioning?: boolean;
 }) {
   const [users, setUsers] = useState(initialUsers);
   const [rows, setRows] = useState("");
@@ -131,7 +133,7 @@ export default function AdminUsersClient({
 
   return (
     <>
-      <section className="panel p-5 sm:p-6">
+      {!restrictProvisioning ? <section className="panel p-5 sm:p-6">
         <h2 className="section-title">Provision members</h2>
         <p className="mt-1 text-sm muted">Enter one email and temporary password per line, separated by a comma. New accounts start as active members.</p>
         <form onSubmit={provisionUsers} className="mt-5">
@@ -147,7 +149,7 @@ export default function AdminUsersClient({
             {provisionResult.failed.length > 0 ? <div><p className="font-semibold error-text">Not created:</p><ul className="list-inside list-disc">{provisionResult.failed.map((failure, index) => <li key={`${failure.email}-${index}`}>{failure.email}: {failure.reason}</li>)}</ul></div> : null}
           </div>
         ) : null}
-      </section>
+      </section> : <p className="status-message mt-5">This shared demo admin can manage only the two demonstration members. Account provisioning is disabled.</p>}
 
       <section className="mt-8" aria-labelledby="members-title">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-2"><h2 id="members-title" className="section-title">Members</h2><p className="text-sm muted">{users.length} account{users.length === 1 ? "" : "s"}</p></div>
@@ -164,8 +166,10 @@ export default function AdminUsersClient({
                     <td><span className={`badge ${user.status === "active" ? "badge-success" : "badge-danger"}`}>{user.status}</span></td>
                     <td><time dateTime={user.createdAt}>{new Date(user.createdAt).toLocaleString()}</time></td>
                     <td className="whitespace-nowrap">
-                      <button type="button" onClick={() => void updateStatus(user)} disabled={pendingId === user.id || (user.id === currentUserId && user.status === "active")} className="text-link disabled:opacity-50">{pendingId === user.id ? "Saving..." : user.status === "active" ? "Disable" : "Enable"}</button>
-                      <button type="button" onClick={() => setPolicyUserId((current) => current === user.id ? null : user.id)} aria-expanded={policyUserId === user.id} className="text-link ml-4">{policyUserId === user.id ? "Close policy" : "AI policy"}</button>
+                      {restrictProvisioning && user.id === currentUserId ? <span className="text-xs muted">Administrator account</span> : <>
+                        <button type="button" onClick={() => void updateStatus(user)} disabled={pendingId === user.id || (user.id === currentUserId && user.status === "active")} className="text-link disabled:opacity-50">{pendingId === user.id ? "Saving..." : user.status === "active" ? "Disable" : "Enable"}</button>
+                        <button type="button" onClick={() => setPolicyUserId((current) => current === user.id ? null : user.id)} aria-expanded={policyUserId === user.id} className="text-link ml-4">{policyUserId === user.id ? "Close policy" : "AI policy"}</button>
+                      </>}
                     </td>
                   </tr>
                   {policyUserId === user.id ? <tr><td colSpan={6} className="bg-[#11171d]"><AiPolicyEditor userId={user.id} email={user.email} /></td></tr> : null}

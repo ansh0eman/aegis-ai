@@ -27,5 +27,6 @@ export function isPublicRegistrationOpen(
   nodeEnv = process.env.NODE_ENV,
   allowInProduction = process.env.AEGIS_ALLOW_PUBLIC_REGISTRATION,
 ) {
+  if (process.env.PUBLIC_DEMO_ACCOUNTS_ENABLED === "true") return false;
   return nodeEnv !== "production" || allowInProduction === "true";
 }
