@@ -24,7 +24,7 @@ type ActiveRequest = {
   reader?: ReadableStreamDefaultReader<Uint8Array>;
 };
 
-export default function ChatClient({ email, isAdmin }: { email: string; isAdmin: boolean }) {
+export default function ChatClient({ email, isAdmin, isSharedPublicDemo = false }: { email: string; isAdmin: boolean; isSharedPublicDemo?: boolean }) {
   const router = useRouter();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -316,8 +316,9 @@ export default function ChatClient({ email, isAdmin }: { email: string; isAdmin:
         </div>
       </header>
       <main className="container app-main max-w-[980px]">
+        {isSharedPublicDemo ? <p className="status-message warning mb-5">Shared demonstration environment. Other visitors may view messages saved in these accounts. Do not enter personal, confidential, or sensitive information.</p> : null}
         <div className="page-heading">
-          <div><span className="badge badge-accent">Private workspace</span><h1 className="mt-4">Conversation</h1><p>Signed in as {email}</p></div>
+          <div><span className="badge badge-accent">{isSharedPublicDemo ? "Shared demo workspace" : "Private workspace"}</span><h1 className="mt-4">Conversation</h1><p>Signed in as {email}</p></div>
           <Link href="/demo" className="text-link text-sm">View public demo</Link>
         </div>
         <section aria-label="Conversation" aria-live="polite" className="panel chat-thread">

@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import SiteHeader from "@/app/ui/site-header";
 
@@ -26,7 +25,56 @@ export default function Home() {
             </div>
           </div>
           <div className="hero-preview">
-            <Image src="/hero-infrastructure.jpg" alt="Abstract close-up of charcoal metal panels with a restrained blue edge light" width={1536} height={1024} priority sizes="(max-width: 800px) 100vw, 54vw" />
+            <svg
+              viewBox="0 0 760 520"
+              role="img"
+              aria-labelledby="architecture-art-title architecture-art-description"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <title id="architecture-art-title">Aegis AI request flow</title>
+              <desc id="architecture-art-description">
+                An original vector illustration linking a browser, a policy gate, and a model through a restrained blue data path.
+              </desc>
+              <rect width="760" height="520" fill="#111820" />
+              <path d="M0 110H760M0 410H760M80 0V520M680 0V520" stroke="#1c2834" strokeWidth="1" />
+              <circle cx="380" cy="260" r="186" fill="#141e29" stroke="#253648" strokeWidth="1.5" />
+              <circle cx="380" cy="260" r="144" fill="none" stroke="#26394d" strokeDasharray="3 10" strokeWidth="1" />
+              <path d="M190 260H570" stroke="#385b81" strokeWidth="2" />
+              <path d="M190 260H570" stroke="#a8c7ff" strokeWidth="2" strokeDasharray="9 13" />
+              <g transform="translate(82 190)">
+                <rect width="166" height="140" rx="13" fill="#1b2530" stroke="#50657c" />
+                <rect x="18" y="18" width="130" height="12" rx="6" fill="#2d3c4c" />
+                <circle cx="27" cy="24" r="3" fill="#a8c7ff" />
+                <rect x="18" y="49" width="45" height="73" rx="7" fill="#141d26" stroke="#35495d" />
+                <rect x="73" y="49" width="75" height="9" rx="4.5" fill="#5a7087" />
+                <rect x="73" y="67" width="61" height="6" rx="3" fill="#394c60" />
+                <rect x="73" y="84" width="70" height="28" rx="5" fill="#263a50" />
+                <path d="M83 99h24" stroke="#a8c7ff" strokeWidth="2" strokeLinecap="round" />
+                <text x="0" y="165" fill="#91a2b5" fontSize="11" fontFamily="ui-sans-serif, system-ui" letterSpacing="2">BROWSER</text>
+              </g>
+              <g transform="translate(305 177)">
+                <rect width="150" height="166" rx="16" fill="#202c38" stroke="#8daed4" strokeWidth="1.5" />
+                <path d="M75 28 111 42v31c0 29-18 49-36 60-18-11-36-31-36-60V42l36-14Z" fill="#273a4e" stroke="#a8c7ff" strokeWidth="2" />
+                <path d="m59 75 11 11 23-26" fill="none" stroke="#d4e4ff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M34 137h82" stroke="#526a83" />
+                <circle cx="48" cy="151" r="3" fill="#a8c7ff" />
+                <rect x="58" y="148" width="49" height="6" rx="3" fill="#465c72" />
+                <text x="14" y="194" fill="#d4dfed" fontSize="11" fontFamily="ui-sans-serif, system-ui" letterSpacing="1.5">POLICY GATE</text>
+              </g>
+              <g transform="translate(512 190)">
+                <rect width="166" height="140" rx="13" fill="#1b2530" stroke="#50657c" />
+                <rect x="20" y="24" width="126" height="92" rx="9" fill="#141d26" stroke="#35495d" />
+                <circle cx="83" cy="68" r="23" fill="#23384d" stroke="#7899bf" />
+                <circle cx="83" cy="68" r="5" fill="#d5e5ff" />
+                <path d="M83 38v10m0 40v10M53 68h10m40 0h10M62 47l7 7m28 28 7 7m0-42-7 7m-28 28-7 7" stroke="#a8c7ff" strokeWidth="2" strokeLinecap="round" />
+                <rect x="48" y="102" width="70" height="5" rx="2.5" fill="#3d536a" />
+                <text x="0" y="165" fill="#91a2b5" fontSize="11" fontFamily="ui-sans-serif, system-ui" letterSpacing="2">MODEL STREAM</text>
+              </g>
+              <circle cx="190" cy="260" r="5" fill="#c7dcfa" />
+              <circle cx="570" cy="260" r="5" fill="#c7dcfa" />
+              <text x="301" y="110" fill="#70849a" fontSize="10" fontFamily="ui-sans-serif, system-ui" letterSpacing="2">IDENTITY · POLICY · RESPONSE</text>
+              <text x="321" y="450" fill="#627589" fontSize="10" fontFamily="ui-monospace, monospace" letterSpacing="2">AEGIS / CONTROLLED FLOW</text>
+            </svg>
           </div>
         </section>
 

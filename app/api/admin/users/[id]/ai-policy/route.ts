@@ -10,6 +10,7 @@ import {
 import { accessErrorResponse, requireAdmin } from "@/lib/authorization";
 import { writeAuditLog } from "@/lib/audit";
 import { isSameOriginMutation, sameOriginErrorResponse } from "@/lib/request-security";
+import { getPublicDemoConfig, isPublicDemoEnvironment, isPublicDemoMemberEmail } from "@/lib/public-demo";
 
 export const runtime = "nodejs";
 
@@ -37,12 +38,15 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   const [user] = db
-    .select({ id: users.id })
+    .select({ id: users.id, email: users.email })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1)
     .all();
   if (!user) return Response.json({ error: "User not found." }, { status: 404 });
+  if (isPublicDemoEnvironment() && (!getPublicDemoConfig() || !isPublicDemoMemberEmail(user.email))) {
+    return Response.json({ error: "User not found." }, { status: 404 });
+  }
 
   const [storedPolicy] = db
     .select({
@@ -69,6 +73,13 @@ export async function PATCH(request: Request, context: RouteContext) {
   const userId = await getUserId(context);
   if (userId === null) {
     return Response.json({ error: "User ID must be a positive integer." }, { status: 400 });
+  }
+
+  if (isPublicDemoEnvironment()) {
+    const [target] = db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1).all();
+    if (!getPublicDemoConfig() || !target || !isPublicDemoMemberEmail(target.email)) {
+      return Response.json({ error: "User not found." }, { status: 404 });
+    }
   }
 
   let body: unknown;

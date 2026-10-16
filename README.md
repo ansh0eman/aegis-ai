@@ -1,202 +1,157 @@
 # Aegis AI
 
-Aegis AI is an enterprise-style AI workspace built as a portfolio project. The
-chat workflow streams responses and stores conversations in a local SQLite
-database through Drizzle ORM.
+**A self-hostable reference workspace for multi-user AI chat, access governance, and operational safeguards.**
 
-## Getting Started
+Aegis explores a problem that a basic chatbot does not address: how to give multiple people access to model-backed conversations while keeping account ownership, administrative changes, and request limits explicit. It is a portfolio/reference application, not a claim of certified or production-hardened security.
 
-Install dependencies and start the development server:
+The public `/demo` page offers scripted, synthetic examples. A separately configured public shared-account demo and an optional Groq inference path also exist in source, but neither is automatically enabled or deployed by this repository. The private workspace uses OpenAI only when a server-side key is configured.
+
+## What is implemented
+
+- Email/password accounts with Argon2id password hashes and seven-day JWT sessions in HttpOnly cookies.
+- `admin` and `member` roles, active/disabled states, server-side authorization, same-origin mutation checks, and owner-scoped conversation access.
+- OpenAI Responses API streaming as Server-Sent Events (SSE), including stop/cancellation, safe failure events, and persistence of a completed assistant response.
+- SQLite persistence through Drizzle ORM for users, conversations, messages, AI policies, usage, audit events, and demo request counters.
+- Admin provisioning and account/policy changes, written with related audit rows in SQLite transactions.
+- Per-user prompt/request policy checks performed transactionally before private inference admission.
+- A synthetic browser-only playground at `/demo`; scripted mode does not call a provider or touch real user data.
+- Optional public demo account and Groq inference workflows behind independent configuration gates, bounded quotas, timeouts, and prompt/output limits. Provider account tier cannot be proven by the app; operators must verify it.
+- Docker multi-stage build, standalone Next.js output, non-root runtime, startup migration runner, and named SQLite volume.
+
+Implementation details and limitations are documented in [`docs/`](docs/architecture.md).
+
+## Explore
+
+The landing page uses a small original inline SVG illustration of the browser → policy → model flow. It is part of `app/page.tsx`, not a screenshot or a third-party image.
+
+- `/demo` — synthetic personas, scripted response playback, local governance controls, and synthetic audit history.
+- `/login` — real login form; demo-account disclosure depends on deployment configuration.
+- `/chat` — authenticated OpenAI-backed chat, when configured.
+- `/admin` and `/admin/audit` — admin-only account, policy, and audit workflows.
+
+No hosted application URL or shared credentials are published here. The application has not been deployed as part of this release-preparation phase.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  Browser -->|HTTPS / same-origin| Next[Next.js App Router]
+  Next --> Auth[JWT cookie + DB role/status checks]
+  Next --> Policy[SQLite quota and policy admission]
+  Policy --> DB[(SQLite via Drizzle)]
+  Next -->|SSE| OpenAI[OpenAI Responses API]
+  Next -. optional isolated public demo .-> Groq[Groq chat completions]
+```
+
+In the private chat route, a request is authenticated and admitted against status, ownership, policy, and quota in SQLite before it is sent to OpenAI. The route streams typed SSE events to the browser and stores one complete assistant row after a successful provider completion. Public demo inference uses a different route, key, limits, and configuration; it is disabled unless an operator explicitly enables and verifies it. See [architecture](docs/architecture.md), [streaming](docs/streaming.md), and [demo boundaries](docs/demo.md).
+
+## Technology
+
+| Area | Implementation |
+| --- | --- |
+| Web application | Next.js 16 App Router, React 19, TypeScript |
+| Private inference | OpenAI JavaScript SDK, Responses API, SSE |
+| Optional demo inference | Server-side Groq-compatible streaming request; disabled by default |
+| Authentication | Argon2id, `jose` JWT, HttpOnly cookie |
+| Database | SQLite, `better-sqlite3`, Drizzle ORM and migrations |
+| Container | Node 24 Debian slim, standalone Next.js output, Docker Compose |
+
+## Local development
+
+Prerequisites: Node.js 24, npm, and an OpenAI API key only if you intend to use real private chat. Scripted `/demo` scenarios and the automated tests do not require inference credentials.
 
 ```bash
-npm install
+git clone https://github.com/ansh0eman/aegis-ai.git
+cd aegis-ai
+npm ci
+cp .env.example .env.local
+```
+
+Edit `.env.local` locally. Set a random `AUTH_SECRET` of at least 32 bytes. `OPENAI_API_KEY` is optional for development but required for private chat. Keep provider credentials server-side; never use a `NEXT_PUBLIC_` prefix. Do not paste secrets into issues or commit `.env.local`.
+
+```bash
 npm run db:migrate
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in a browser.
+Open `http://localhost:3000`. Registration is open in development by default. New users are members. For local admin testing, register a user, then use `npm run db:promote-admin -- user@example.com --local`; the script refuses production mode. Avoid using sensitive data in a shared/demo environment.
 
-## Public interactive demo
+## Docker Compose
 
-Visit `/demo` without signing in to try scripted chat playback and synthetic
-user, policy, and audit interactions. Its sample data lives only in browser
-state and resets when the page reloads. The demo makes no OpenAI requests,
-does not consume API credits, and does not read or write the application
-database. The authenticated `/chat` and `/admin` pages remain separate and
-continue to use the real server APIs and access controls.
-
-## OpenAI API key
-
-Add your key to `.env.local` in the project root:
-
-```text
-OPENAI_API_KEY=your_api_key_here
-```
-
-Next.js loads `.env.local` for server-side code. Keep this key out of browser
-code and do not rename it with a `NEXT_PUBLIC_` prefix. Git ignores `.env.local`.
-
-Authentication also requires a private `AUTH_SECRET` value in `.env.local`.
-It is used only by server code to sign session tokens. Do not add a `NEXT_PUBLIC_`
-prefix or commit `.env.local`. New accounts require a valid email and a password
-of at least 12 characters. Passwords are stored as Argon2id hashes; raw
-passwords are never stored.
-
-Public registration is available in development but closed by default when
-`NODE_ENV=production`. For a limited onboarding window, set
-`AEGIS_ALLOW_PUBLIC_REGISTRATION=true`, create the initial account, then remove
-that setting and restart. Use a controlled operator procedure to bootstrap a
-production admin account.
-
-## Local admin access
-
-There is no public role-change endpoint. To promote one existing account in the
-local development database, register it normally, then run:
+Compose runs one app instance, binds to loopback for local use, passes secrets at runtime, migrates before startup, and persists SQLite in the `aegis_data` volume. It closes public registration. The default local HTTP cookie setting is not suitable for public HTTPS hosting.
 
 ```bash
-npm run db:promote-admin -- user@example.com --local
-```
-
-The command updates only that email in local `aegis.db`. It refuses to run when
-`NODE_ENV=production`. After promotion, log out and back in; the server loads
-the role from SQLite on each request rather than trusting a role in the JWT.
-
-## Available scripts
-
-- `npm run dev` starts the local development server.
-- `npm run lint` checks the code with ESLint.
-- `npm run test:sse` and `npm run test:step11` run focused streaming and isolated
-  SQLite integrity tests.
-- `npm run build` creates a production build and runs Next.js type checks.
-- `npm run start` serves the production build.
-- `npm run db:generate` creates a migration from changes to `db/schema.ts`.
-- `npm run db:migrate` applies pending migrations to `aegis.db`.
-
-## Local database
-
-The server stores conversations in `aegis.db` at the project root. This local
-SQLite file is ignored by Git. Table structure lives in `db/schema.ts`; generated
-SQL migrations are kept in `drizzle/`. Run migrations with `npm run db:migrate`
-after generating them. Conversation IDs appear in the `/chat` URL so the page
-can reload messages after a refresh. For isolated local testing, both the app and
-Drizzle CLI accept the server-side `AEGIS_DATABASE_PATH` environment variable;
-otherwise they use `./aegis.db`.
-
-## Run with Docker
-
-Docker packages the app and its production runtime into an image. A container
-is one running instance of that image. The image is built in stages: Node
-dependencies (including native SQLite/password modules) are installed and the
-Next.js standalone server is built, then only the runtime files are copied into
-the final image. The runtime uses the Node 24 LTS Debian slim image and runs as
-the unprivileged `node` user.
-
-Docker Compose defines the local app service and a named volume for SQLite.
-The database lives at `/data/aegis.db` inside the container; `aegis_data` keeps
-it outside the replaceable container and image. The host's `aegis.db` is neither
-copied into the image nor mounted into the container. The app applies already
-generated Drizzle migrations on startup, before starting Next.js; it never
-generates migrations at runtime. Run one app container at a time because this
-simple setup is intended for a single instance, not multi-replica deployment.
-
-The Compose configuration requires `OPENAI_API_KEY` and `AUTH_SECRET` from
-`.env.local`. Compose passes them to the running server; the Dockerfile does
-not bake them into an image. Keep the Docker daemon and access to it trusted,
-since runtime environment variables can be inspected by Docker administrators.
-Local Compose binds the app only to `127.0.0.1:3000`, closes public registration,
-and disables Secure cookies only for local plain-HTTP testing. Use HTTPS and
-Secure cookies for a public deployment.
-
-From the repository root, validate the Compose file without printing resolved
-environment values, then build and start the app:
-
-```bash
+cp .env.example .env.local
+# Set AUTH_SECRET and, if using private chat, OPENAI_API_KEY in .env.local.
 docker compose --env-file .env.local config --quiet
 docker compose --env-file .env.local up --build -d
-docker compose --env-file .env.local ps
 docker compose --env-file .env.local logs --tail=100 aegis
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The service health check
-requests the home page. On startup, migration logs should report that the
-database is up to date. To stop the container while retaining data, use
-`docker compose --env-file .env.local down` (do not add `-v` if you want to
-keep the database). Starting it again with
-`docker compose --env-file .env.local up -d` reuses the same named volume.
+Keep the volume when stopping: `docker compose --env-file .env.local down` (do not add `-v` unless you intend to remove local database data). Read [self-hosting](docs/self-hosting.md) and the [future Ubuntu deployment runbook](docs/deployment-ubuntu.md) before exposing anything publicly.
 
-To confirm the migration history survives replacing the container, compare the
-count before and after a recreate:
+## Migrations and storage
 
-```bash
-docker compose --env-file .env.local exec -T aegis node -e "const D=require('better-sqlite3');const d=new D('/data/aegis.db',{readonly:true});console.log(d.prepare('select count(*) as migrations from __drizzle_migrations').get().migrations);d.close()"
-docker compose --env-file .env.local up --force-recreate -d aegis
-docker compose --env-file .env.local exec -T aegis node -e "const D=require('better-sqlite3');const d=new D('/data/aegis.db',{readonly:true});console.log(d.prepare('select count(*) as migrations from __drizzle_migrations').get().migrations);d.close()"
-```
+The TypeScript schema is in `db/schema.ts`; generated SQL is in `drizzle/`. Local development applies migrations with `npm run db:migrate`; the container runs `scripts/migrate.mjs` before starting the standalone server. SQLite lives at `AEGIS_DATABASE_PATH` (defaults to `./aegis.db` locally and `/data/aegis.db` in Compose). The database and backups are excluded from Git and Docker build context.
 
-For a consistent SQLite backup, use SQLite's backup API from the running
-container, then copy that completed backup to the ignored local `backups/`
-directory:
+The application is designed for one app instance with persistent local SQLite storage. Its in-process concurrency guards and SQLite deployment model are not a multi-replica architecture. See [database and concurrency](docs/database-and-concurrency.md).
+
+## Authentication and authorization
+
+Passwords are hashed with Argon2id. A signed HS256 JWT contains the user ID as subject and is stored in an HttpOnly, SameSite=Lax cookie. On each authenticated request, the server verifies the JWT, reloads role/status from SQLite, and rejects disabled or non-allow-listed public-demo accounts. Role checks and conversation ownership checks happen server-side. These controls do not replace TLS, host hardening, secret rotation, backups, or a security review. Details: [authentication and RBAC](docs/authentication-and-rbac.md).
+
+## Governance and audit
+
+`ai_policies` holds the enable switch, prompt-size cap, and daily request limit; `ai_usage` records admitted private chat requests. Admin user/policy updates and audit entries share SQLite transactions where coded. Audit records are append-only through the application API, but the SQLite file owner can still alter them. These request controls are not billing or spend guarantees; enforce provider-side limits too. Details: [AI governance](docs/ai-governance.md).
+
+## Tests and checks
 
 ```bash
-mkdir -p backups
-container_id=$(docker compose --env-file .env.local ps -q aegis)
-docker exec "$container_id" node -e "const D=require('better-sqlite3');new D('/data/aegis.db',{readonly:true}).backup('/tmp/aegis-backup.db').then(()=>console.log('Backup ready'))"
-docker cp "$container_id:/tmp/aegis-backup.db" backups/aegis-container-backup.db
+npm run test:sse
+npm run test:step11
+npm run test:demo
+npm run lint
+npx tsc --noEmit
+npm run build -- --webpack
 ```
 
-The backup is a separate file; protect it like production data. Test restores
-against a separate disposable database, never by overwriting the live volume.
-Keep backups outside Git and make sure your hosting provider also protects and
-backs up its persistent storage.
+Tests use synthetic data and isolated temporary SQLite databases; they do not require or call OpenAI/Groq. See [CI](.github/workflows/ci.yml) and [testing notes](docs/database-and-concurrency.md#verification).
 
-For another CPU architecture, build on that architecture or use Buildx, for
-example `docker buildx build --platform linux/amd64 -t aegis-ai:local .`. The
-container still expects one persistent writable volume at `/data`. Before
-upgrading, back up the database, then build and recreate the app. Migrations
-run before the server starts; when moving to multiple replicas, use a separate
-single-run migration job and deployment coordination instead of letting every
-replica migrate concurrently.
+## Project map
 
-## Project structure
+```text
+app/                 App Router pages and API route handlers
+db/schema.ts         Drizzle table definitions
+db/index.ts          Server-only SQLite/Drizzle connection
+drizzle/             Generated SQL migrations and snapshots
+lib/                 Server-side auth, authorization, quota, audit, and streams
+scripts/             Migration and guarded operator tools
+tests/               SSE, transaction/security, and public-demo tests
+docs/                Architecture, operations, walkthrough, and case study
+```
 
-- `app/layout.tsx` defines the shared HTML shell and site metadata.
-- `app/page.tsx` defines the home page at `/`.
-- `app/chat/page.tsx` checks the signed-in user on the server before rendering
-  the protected workspace; `app/chat/chat-client.tsx` handles streaming in the browser.
-- `app/login/page.tsx` and `app/register/page.tsx` render the simple auth forms.
-- `app/api/auth/` contains registration, login, and logout route handlers.
-- `app/admin/page.tsx` and `app/api/admin/users/route.ts` are admin-only views
-  guarded by the server-side role helper. The admin page provisions member
-  accounts in small batches, lets admins enable or disable accounts, and edit a
-  user's AI policy inline.
-- `app/api/admin/users/[id]/route.ts` updates one account's active/disabled status.
-- `app/api/admin/users/[id]/ai-policy/route.ts` lets admins read and update a
-  user's AI policy; `/admin` exposes the small inline editor.
-- `app/admin/audit/page.tsx` and `app/api/admin/audit/route.ts` show the latest
-  account provisioning and status-change events to admins.
-- `app/api/chat/route.ts` handles `POST /api/chat` requests on the server and
-  checks the user's AI policy and UTC-day usage before writing messages or
-  streaming text from the OpenAI Responses API.
-- `app/api/conversations/[id]/route.ts` loads messages only after checking that
-  the signed-in user owns the conversation.
-- `db/schema.ts` defines the SQLite tables and their relationships. AI policy
-  rows are optional; users without one receive the defaults (AI enabled, 4,000
-  prompt characters, and 100 accepted requests per UTC day). `ai_usage` records
-  accepted requests, not tokens or successful completions.
-- Users have a database-constrained `member`/`admin` role and
-  `active`/`disabled` status. Registration and provisioning always create
-  active members; disabled users cannot log in or use existing sessions.
-- `lib/auth.ts` verifies signed sessions and loads the current user on the server.
-- `lib/authorization.ts` centralizes authenticated-user and admin checks.
-- `lib/audit.ts` writes audit entries in the same transaction as user mutations
-  and reads a safe, newest-first list for admin views.
-- `lib/ai-policy.ts` contains server-side policy defaults and database fallback.
-- `lib/password.ts` hashes and verifies passwords on the server.
-- `db/index.ts` opens the server-only SQLite connection and creates the Drizzle
-  client.
-- Production deployment should use a persistent SQLite volume or another
-  explicitly supported persistent host. The app does not configure WAL; SQLite
-  still has a single writer, and a local file may be ephemeral on serverless
-  hosting. Apply edge-level rate limiting before opening public access.
-- `app/globals.css` contains Tailwind CSS and global theme styles.
-- `public/` is reserved for static assets that are served from the site root.
+## Security assumptions and known limitations
+
+- Do not expose the app publicly until HTTPS, `AUTH_COOKIE_SECURE=true`, secret management, backups, restore tests, registration policy, provider limits, firewall/SSH, and monitoring are deliberately configured.
+- `AUTH_SECRET`, `OPENAI_API_KEY`, and optional `GROQ_API_KEY` are runtime server secrets. `.env.local`, SQLite files, backups, and container runtime configuration require operator protection.
+- A public shared-account demo intentionally shares the demo users' saved messages and state among visitors. Never use personal or confidential information there. It must use its dedicated database path and volume; the code fails closed if these settings disagree.
+- SQLite and in-process concurrency limiting are for a single app instance, not horizontal scaling. Local concurrency tests do not prove reliability under every deployment or filesystem.
+- Admins manage users and policies but cannot read other users' conversations through the current app APIs.
+- The app has no SSO, MFA, organizations/tenancy, SIEM integration, billing enforcement, PostgreSQL backend, or formal security certification.
+- Optional demo Groq “free tier verified” is an operator assertion; code cannot determine a key's current billing plan. Keep the feature disabled if the provider account or pricing is uncertain.
+
+See [known limitations and roadmap](docs/architecture.md#limits-and-open-work) and [security reporting](SECURITY.md).
+
+## Contributing
+
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a change. Keep behavior and security boundaries explicit, add focused tests, and never include secrets or private database content in patches.
+
+## License
+
+The project source is licensed under MIT. Third-party packages retain their own licenses when installed from npm; this license does not relicense those dependencies. The original landing illustration is authored as inline SVG, and system font stacks avoid bundling a separate font asset.
+
+## Repository metadata recommendation
+
+- Description: `A self-hostable multi-user AI workspace reference app with SSE chat, server-side RBAC, SQLite governance, and an isolated public demo.`
+- Topics: `nextjs`, `typescript`, `sqlite`, `drizzle-orm`, `server-sent-events`, `rbac`, `ai-governance`, `docker`, `openai-api`
+- Website: `https://ansh0eman.in` (portfolio; not an Aegis deployment URL)

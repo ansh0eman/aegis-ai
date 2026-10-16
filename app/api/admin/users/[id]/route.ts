@@ -1,8 +1,10 @@
 import { db } from "@/db";
-import type { UserStatus } from "@/db/schema";
+import { users, type UserStatus } from "@/db/schema";
 import { accessErrorResponse, requireAdmin } from "@/lib/authorization";
 import { updateUserStatusWithAudit } from "@/lib/admin-user-transactions";
 import { isSameOriginMutation, sameOriginErrorResponse } from "@/lib/request-security";
+import { getPublicDemoConfig, isPublicDemoEnvironment, isPublicDemoMemberEmail } from "@/lib/public-demo";
+import { eq } from "drizzle-orm";
 
 export const runtime = "nodejs";
 
@@ -20,6 +22,14 @@ export async function PATCH(request: Request, context: RouteContext) {
     return Response.json({ error: "User ID must be a positive integer." }, { status: 400 });
   }
   const userId = Number(id);
+
+  if (isPublicDemoEnvironment()) {
+    const config = getPublicDemoConfig();
+    const [target] = db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1).all();
+    if (!config || !target || !isPublicDemoMemberEmail(target.email, config)) {
+      return Response.json({ error: "User not found." }, { status: 404 });
+    }
+  }
 
   let body: unknown;
   try {

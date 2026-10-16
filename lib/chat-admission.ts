@@ -1,12 +1,13 @@
 import "server-only";
 
-import { and, count, desc, eq, gte, lt } from "drizzle-orm";
+import { and, count, desc, eq, gte, lt, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as schema from "../db/schema";
 import {
   aiPolicies,
   aiUsage,
   conversations,
+  demoRequestBuckets,
   messages,
   users,
 } from "../db/schema";
@@ -27,6 +28,7 @@ export type ChatAdmissionResult =
   | { kind: "ai_disabled" }
   | { kind: "prompt_too_long"; maxPromptChars: number }
   | { kind: "daily_limit"; maxRequestsPerDay: number }
+  | { kind: "public_daily_limit"; maxRequestsPerDay: number }
   | { kind: "service_not_configured" };
 
 type AdmissionDatabase = BetterSQLite3Database<typeof schema>;
@@ -38,6 +40,7 @@ export function admitChatRequest(
     message: string;
     conversationId?: number;
     serviceConfigured: boolean;
+    publicDailyLimit?: number;
     now?: Date;
   },
 ): ChatAdmissionResult {
@@ -126,6 +129,33 @@ export function admitChatRequest(
       }
 
       if (!input.serviceConfigured) return { kind: "service_not_configured" };
+
+      if (input.publicDailyLimit !== undefined) {
+        const publicStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+        transaction.delete(demoRequestBuckets)
+          .where(lt(demoRequestBuckets.windowStart, publicStart - 7 * 24 * 60 * 60 * 1000))
+          .run();
+        const [publicUsage] = transaction
+          .select({ requests: demoRequestBuckets.requestCount })
+          .from(demoRequestBuckets)
+          .where(and(
+            eq(demoRequestBuckets.scope, "public-openai"),
+            eq(demoRequestBuckets.windowStart, publicStart),
+          ))
+          .limit(1)
+          .all();
+        if ((publicUsage?.requests ?? 0) >= input.publicDailyLimit) {
+          return { kind: "public_daily_limit", maxRequestsPerDay: input.publicDailyLimit };
+        }
+        transaction
+          .insert(demoRequestBuckets)
+          .values({ scope: "public-openai", windowStart: publicStart, requestCount: 1 })
+          .onConflictDoUpdate({
+            target: [demoRequestBuckets.scope, demoRequestBuckets.windowStart],
+            set: { requestCount: sql`${demoRequestBuckets.requestCount} + 1` },
+          })
+          .run();
+      }
 
       if (activeConversationId === undefined) {
         const [conversation] = transaction

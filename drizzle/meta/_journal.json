@@ -43,6 +43,13 @@
       "when": 1791472000723,
       "tag": "0005_many_rachel_grey",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1792149117455,
+      "tag": "0006_simple_cassandra_nova",
+      "breakpoints": true
     }
   ]
 }

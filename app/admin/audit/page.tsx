@@ -2,6 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getRecentAuditLogs } from "@/lib/audit";
 import { requireAdmin } from "@/lib/authorization";
+import { db } from "@/db";
+import { users } from "@/db/schema";
+import { inArray } from "drizzle-orm";
+import { getPublicDemoConfig, isPublicDemoEnvironment } from "@/lib/public-demo";
 
 export default async function AdminAuditPage() {
   const access = await requireAdmin();
@@ -19,12 +23,20 @@ export default async function AdminAuditPage() {
     );
   }
 
-  const events = getRecentAuditLogs();
+  const demoConfig = getPublicDemoConfig();
+  if (isPublicDemoEnvironment() && !demoConfig) {
+    return <main className="container app-main"><h1>Public demo administration unavailable</h1><p>Contact the operator to fix the demo account configuration.</p></main>;
+  }
+  const userIds = demoConfig
+    ? db.select({ id: users.id }).from(users).where(inArray(users.email, demoConfig.emails)).all().map(({ id }) => id)
+    : undefined;
+  const events = getRecentAuditLogs(userIds);
 
   return (
     <>
       <header className="site-header"><div className="container nav-row"><Link href="/" className="brand"><span className="brand-mark" aria-hidden="true">A</span><span>Aegis AI</span></Link><nav aria-label="Admin navigation" className="nav-links"><Link href="/chat">Workspace</Link><Link href="/admin">Users</Link></nav></div></header>
       <main className="container app-main">
+        {isPublicDemoEnvironment() ? <p className="status-message warning mb-5">Shared demonstration environment. Other visitors may view messages saved in these accounts. Do not enter personal, confidential, or sensitive information.</p> : null}
         <div className="page-heading"><div><span className="badge badge-accent">Admin console</span><h1 className="mt-4">Audit log</h1><p>Recent account provisioning and status changes.</p></div><Link href="/admin" className="button button-secondary">Back to users</Link></div>
         <div className="table-wrap">
         <table className="data-table min-w-[680px]">

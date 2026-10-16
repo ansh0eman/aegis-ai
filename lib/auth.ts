@@ -5,11 +5,13 @@ import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users, type UserRole, type UserStatus } from "@/db/schema";
+import { getPublicDemoConfig, isPublicDemoEnvironment } from "@/lib/public-demo";
 
 const COOKIE_NAME = "aegis_session";
 const SESSION_SECONDS = 60 * 60 * 24 * 7;
 
 function isSecureCookie() {
+  if (isPublicDemoEnvironment()) return process.env.AUTH_COOKIE_SECURE === "true";
   if (process.env.AUTH_COOKIE_SECURE === "true") return true;
   if (process.env.AUTH_COOKIE_SECURE === "false") return false;
   return process.env.NODE_ENV === "production";
@@ -75,7 +77,12 @@ export async function getCurrentUser() {
       .where(eq(users.id, userId))
       .limit(1)
       .all();
-    return user?.status === "active" ? user : null;
+    if (user?.status !== "active") return null;
+    if (isPublicDemoEnvironment()) {
+      const demoConfig = getPublicDemoConfig();
+      if (!demoConfig?.emails.includes(user.email)) return null;
+    }
+    return user;
   } catch {
     return null;
   }

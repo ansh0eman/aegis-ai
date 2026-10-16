@@ -7,11 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:demo": "node --import=./tests/helpers/server-only-loader.mjs --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/demo-playground.test.mjs tests/demo-inference.test.mjs tests/public-demo.test.mjs",
     "test:sse": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/sse-parser.test.mjs",
     "test:step11": "node --import=./tests/helpers/server-only-loader.mjs --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/step11-*.test.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:promote-admin": "node scripts/promote-admin.mjs"
+    "db:promote-admin": "node scripts/promote-admin.mjs",
+    "db:setup-public-demo": "node scripts/setup-public-demo.mjs",
+    "db:reset-public-demo": "node scripts/reset-public-demo.mjs"
   },
   "dependencies": {
     "argon2": "^0.45.1",

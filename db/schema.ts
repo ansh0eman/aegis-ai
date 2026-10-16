@@ -3,6 +3,7 @@ import {
   check,
   index,
   integer,
+  primaryKey,
   sqliteTable,
   text,
   uniqueIndex,
@@ -157,5 +158,21 @@ export const messages = sqliteTable(
       table.conversationId,
       table.id,
     ),
+  ],
+);
+
+// Shared rate-limit buckets for public demo traffic. Scopes contain either a
+// fixed counter name or keyed hashes, never raw emails/IPs, prompts, or replies.
+export const demoRequestBuckets = sqliteTable(
+  "demo_request_buckets",
+  {
+    scope: text("scope").notNull(),
+    windowStart: integer("window_start").notNull(),
+    requestCount: integer("request_count").notNull().default(0),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scope, table.windowStart] }),
+    check("demo_request_buckets_count_check", sql`${table.requestCount} >= 0`),
+    index("demo_request_buckets_window_start_idx").on(table.windowStart),
   ],
 );

@@ -34,6 +34,8 @@ COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/drizzle ./drizzle
 COPY --from=builder --chown=node:node /app/scripts/migrate.mjs ./scripts/migrate.mjs
+COPY --from=builder --chown=node:node /app/scripts/setup-public-demo.mjs ./scripts/setup-public-demo.mjs
+COPY --from=builder --chown=node:node /app/scripts/reset-public-demo.mjs ./scripts/reset-public-demo.mjs
 # The standalone trace does not include Drizzle when it is used only by this
 # separate startup migration script, so include that runtime package explicitly.
 COPY --from=deps --chown=node:node /app/node_modules/drizzle-orm ./node_modules/drizzle-orm
