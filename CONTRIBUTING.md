@@ -1,17 +1,10 @@
 # Contributing
 
-Thanks for considering a contribution. Aegis AI is a learning/reference project; please keep changes small enough to review and describe what they do and what they do not prove.
+Keep changes focused and describe both their behavior and limitations. For larger API/schema changes, open an issue first.
 
-## Before opening a change
+## Local workflow
 
-1. Open an issue for larger behavior or schema changes so the tradeoffs can be discussed first.
-2. Read the relevant source and documentation under `docs/`.
-3. Do not include `.env.local`, API keys, JWTs, passwords, database files, backups, or real conversation data.
-4. Keep public demo state isolated from private account APIs and databases.
-
-## Development workflow
-
-Use Node.js 24 and the committed npm lockfile:
+Use Node.js 24 and the committed lockfile:
 
 ```bash
 npm ci
@@ -20,9 +13,9 @@ npm run db:migrate
 npm run dev
 ```
 
-Inference keys are not needed for automated checks. If you choose to test real inference locally, use your own server-side credential, never print it, and do not add provider calls to tests or CI.
+Tests need no inference key. Never commit `.env.local`, credentials, JWTs, database files, backups, or real conversation data. Keep public demo interactions isolated from private account data.
 
-Run the focused checks relevant to your change, then the full suite:
+Run relevant tests, then the full checks:
 
 ```bash
 npm run test:sse
@@ -34,16 +27,8 @@ npm run build -- --webpack
 git diff --check
 ```
 
-For a schema change, edit `db/schema.ts`, generate a migration with `npm run db:generate`, inspect the generated SQL and migration journal, and test applying it to a fresh database. Never replace an existing migration to change its meaning.
+For schema changes, edit `db/schema.ts`, generate and review a migration with `npm run db:generate`, then test it against a disposable database. Do not rewrite an existing migration.
 
 ## Pull requests
 
-Describe the user-visible or operational change, the security/data boundaries affected, tests run, and any known limitations. Include a migration or documentation update when appropriate. Do not claim a production deployment or security property based only on a local build/test.
-
-## Scope and style
-
-- Preserve server-side authorization and input validation.
-- Keep secrets and database access out of client modules.
-- Prefer focused tests using isolated temporary SQLite databases.
-- Keep public demo interactions clearly labeled synthetic or live; never silently route scripted prompts to real private APIs.
-- Avoid new dependencies unless the change needs them and the tradeoff is explained.
+Describe behavior, security/data boundaries, tests, migrations, and limitations. Preserve server-side authorization and validation; keep database/secrets in server-only modules. Do not claim production readiness based only on local tests.
